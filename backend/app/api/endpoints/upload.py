@@ -60,10 +60,13 @@ async def upload_pdf(
         background_tasks.add_task(process_paper, paper_id)
 
         return {
-            "message": "File uploaded successfully",
             "id": paper_id,
             "filename": file.filename,
-            "status": "processing",
+            "title": "",
+            "authors": [],
+            "abstract": "",
+            "uploaded_at": paper.upload_time.isoformat(),
+            "status": "uploaded",
         }
 
     except Exception as e:
