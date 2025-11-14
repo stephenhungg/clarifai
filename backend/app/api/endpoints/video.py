@@ -103,7 +103,6 @@ async def run_agent_script(
         return stderr_lines
 
     # Wait for both stdout and stderr
-    import asyncio
     stdout_task = asyncio.create_task(read_stdout())
     stderr_task = asyncio.create_task(read_stderr())
 
