@@ -39,6 +39,12 @@ manager = ConnectionManager()
 video.manager = manager
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Docker healthcheck"""
+    return {"status": "healthy"}
+
+
 @app.websocket("/ws/papers/{paper_id}/logs")
 async def websocket_endpoint(websocket: WebSocket, paper_id: str):
     await manager.connect(paper_id, websocket)
