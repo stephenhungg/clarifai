@@ -44,7 +44,7 @@ def get_video_scenes(client, concept_name, concept_description):
     log("--- PROMPT FOR SCENE SPLITTING ---")
     log(prompt)
     response = client.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             temperature=0.3,
@@ -105,7 +105,7 @@ def generate_manim_code(client, description):
     log("--- PROMPT FOR MANIM CODE ---")
     log(prompt)
     response = client.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             temperature=0.3,
@@ -125,7 +125,7 @@ def correct_manim_code(client, code, error):
     log("--- PROMPT FOR CODE CORRECTION ---")
     log(prompt)
     response = client.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             temperature=0.3,
