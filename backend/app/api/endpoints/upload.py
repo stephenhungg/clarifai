@@ -114,8 +114,23 @@ async def get_paper_status(paper_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Paper not found")
 
     paper = papers_db[paper_id]
+
+    # Map backend status to frontend expected values
+    status_map = {
+        "pending": "uploaded",
+        "processing": "analyzing",
+        "completed": "analyzed",
+        "failed": "error"
+    }
+
     return {
         "id": paper_id,
+        "filename": paper.filename,
+        "title": paper.title,
+        "authors": paper.authors,
+        "abstract": paper.abstract,
+        "uploaded_at": paper.upload_time.isoformat(),
+        "status": status_map.get(paper.analysis_status.value, "uploaded"),
         "analysis_status": paper.analysis_status.value,
         "video_status": paper.video_status.value,
         "concepts_count": len(paper.concepts),
