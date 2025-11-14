@@ -61,47 +61,65 @@ async def run_agent_script(
     final_result = None
     successful_clips = []
 
-    async for line in process.stdout:
-        decoded_line = line.decode("utf-8").strip()
-        
-        # Print to console for debugging
-        print(f"Agent output: {decoded_line}")
+    # Read stdout and stderr concurrently
+    async def read_stdout():
+        nonlocal final_result, successful_clips
+        async for line in process.stdout:
+            decoded_line = line.decode("utf-8").strip()
 
-        if decoded_line.startswith("LOG: "):
-            log_message = decoded_line[5:]
-            print(f"Sending log via WebSocket: {log_message}")
-            if manager:
+            # Print to console for debugging
+            print(f"Agent output: {decoded_line}")
+
+            if decoded_line.startswith("LOG: "):
+                log_message = decoded_line[5:]
+                print(f"Sending log via WebSocket: {log_message}")
+                if manager:
+                    try:
+                        await manager.send_log(
+                            paper_id, json.dumps({"type": "log", "message": log_message})
+                        )
+                        print(f"Log sent successfully")
+                    except Exception as e:
+                        print(f"Error sending log: {e}")
+            elif decoded_line.startswith("CLIP_SUCCESS: "):
+                clip_path = decoded_line[14:]
+                successful_clips.append(clip_path)
+            elif decoded_line.startswith("FINAL_RESULT: "):
+                result_json = decoded_line[14:]
                 try:
-                    await manager.send_log(
-                        paper_id, json.dumps({"type": "log", "message": log_message})
-                    )
-                    print(f"Log sent successfully")
-                except Exception as e:
-                    print(f"Error sending log: {e}")
-        elif decoded_line.startswith("CLIP_SUCCESS: "):
-            clip_path = decoded_line[14:]
-            successful_clips.append(clip_path)
-        elif decoded_line.startswith("FINAL_RESULT: "):
-            result_json = decoded_line[14:]
-            try:
-                final_result = json.loads(result_json)
-            except json.JSONDecodeError:
-                final_result = {
-                    "success": False,
-                    "error": "Failed to decode agent's final result.",
-                }
+                    final_result = json.loads(result_json)
+                except json.JSONDecodeError:
+                    final_result = {
+                        "success": False,
+                        "error": "Failed to decode agent's final result.",
+                    }
+
+    async def read_stderr():
+        stderr_lines = []
+        async for line in process.stderr:
+            decoded_line = line.decode("utf-8").strip()
+            print(f"Agent stderr: {decoded_line}")
+            stderr_lines.append(decoded_line)
+        return stderr_lines
+
+    # Wait for both stdout and stderr
+    import asyncio
+    stdout_task = asyncio.create_task(read_stdout())
+    stderr_task = asyncio.create_task(read_stderr())
+
+    stderr_lines = await asyncio.gather(stdout_task, stderr_task)
+    stderr_output = stderr_lines[1]
 
     await process.wait()
+    print(f"[VIDEO] Process exited with code: {process.returncode}")
 
     if final_result:
         final_result["clip_paths"] = successful_clips
         return final_result
 
-    stderr_output = await process.stderr.read()
     if stderr_output:
-        error_message = (
-            f"Agent crashed without a final result. STDERR:\n{stderr_output.decode()}"
-        )
+        error_message = f"Agent crashed without a final result. STDERR:\n{'\n'.join(stderr_output)}"
+        print(f"[VIDEO] Agent error: {error_message}")
         if manager:
             await manager.send_log(
                 paper_id, json.dumps({"type": "log", "message": error_message})
