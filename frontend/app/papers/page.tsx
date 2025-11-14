@@ -7,7 +7,6 @@ import { FileText, Clock, Search } from 'lucide-react';
 import { Navigation } from '../components/navigation';
 import { StatusBadge } from '../components/status-badge';
 
-// Mock data for now - in production, fetch from API
 interface PaperItem {
   id: string;
   title: string;
@@ -22,17 +21,46 @@ export default function PapersPage() {
   const [papers, setPapers] = useState<PaperItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simulate loading papers from localStorage or API
-    const loadPapers = () => {
+    const loadPapers = async () => {
       try {
-        const savedPapers = localStorage.getItem('papers');
-        if (savedPapers) {
-          setPapers(JSON.parse(savedPapers));
+        setIsLoading(true);
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/papers`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch papers');
         }
-      } catch (error) {
-        console.error('Failed to load papers:', error);
+        
+        const data = await response.json();
+        const papersData = data.papers || [];
+        
+        // Map backend response to frontend format
+        // Backend returns: analysis_status ("pending", "processing", "completed", "failed")
+        // Frontend expects: status ("uploaded", "analyzing", "analyzed", "error")
+        const statusMap: Record<string, 'uploaded' | 'analyzing' | 'analyzed' | 'error'> = {
+          'pending': 'uploaded',
+          'processing': 'analyzing',
+          'completed': 'analyzed',
+          'failed': 'error',
+        };
+        
+        const mappedPapers: PaperItem[] = papersData.map((paper: any) => ({
+          id: paper.id,
+          title: paper.title || 'Untitled Paper',
+          authors: paper.authors || [],
+          uploaded_at: paper.upload_time ? new Date(paper.upload_time).toISOString() : new Date().toISOString(),
+          status: statusMap[paper.analysis_status] || 'uploaded',
+          concept_count: paper.concepts_count,
+          video_count: paper.has_video ? 1 : 0,
+        }));
+        
+        setPapers(mappedPapers);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to load papers:', err);
+        setError('Failed to load papers. Please try again.');
       } finally {
         setIsLoading(false);
       }
@@ -90,6 +118,17 @@ export default function PapersPage() {
               />
             </div>
           </motion.div>
+
+          {/* Error Message */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mb-6 p-4 bg-accent-error/10 border border-accent-error/30 rounded-lg text-accent-error"
+            >
+              {error}
+            </motion.div>
+          )}
 
           {/* Papers List */}
           {isLoading ? (

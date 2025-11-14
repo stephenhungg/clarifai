@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Send } from 'lucide-react';
@@ -32,6 +32,7 @@ export default function PaperDetailPage() {
   const [answer, setAnswer] = useState('');
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [analysisMessage, setAnalysisMessage] = useState<string>('Starting analysis...');
 
   useEffect(() => {
     if (!paperId) return;
@@ -43,6 +44,58 @@ export default function PaperDetailPage() {
       loadConcepts();
     }
   }, [paper?.status]);
+
+  // Poll for status updates when analyzing
+  useEffect(() => {
+    if (!paperId || paper?.status !== 'analyzing') return;
+
+    const messages = [
+      'Parsing PDF content...',
+      'Extracting text and structure...',
+      'Analyzing with AI...',
+      'Identifying key concepts...',
+      'Extracting metadata...',
+      'Almost done...',
+    ];
+
+    let messageIndex = 0;
+    setAnalysisMessage(messages[0]);
+
+    // Rotate messages every 3 seconds
+    const messageInterval = setInterval(() => {
+      messageIndex = (messageIndex + 1) % messages.length;
+      setAnalysisMessage(messages[messageIndex]);
+    }, 3000);
+
+    // Poll status every 2 seconds
+    const pollInterval = setInterval(async () => {
+      try {
+        const updatedPaper = await getPaper(paperId);
+        setPaper(updatedPaper);
+
+        if (updatedPaper.status === 'analyzed') {
+          clearInterval(pollInterval);
+          clearInterval(messageInterval);
+          setIsAnalyzing(false);
+          setAnalysisMessage('Analysis complete!');
+          setTimeout(() => setAnalysisMessage(''), 2000);
+          loadConcepts();
+        } else if (updatedPaper.status === 'error') {
+          clearInterval(pollInterval);
+          clearInterval(messageInterval);
+          setIsAnalyzing(false);
+          setError('Analysis failed');
+        }
+      } catch (err) {
+        console.error('Failed to poll status:', err);
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearInterval(messageInterval);
+    };
+  }, [paperId, paper?.status]);
 
   const loadPaper = async () => {
     if (!paperId) return;
@@ -256,7 +309,8 @@ export default function PaperDetailPage() {
                 {paper.status === 'analyzing' && (
                   <div className="card text-center py-8">
                     <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-text-secondary">Analyzing paper...</p>
+                    <p className="text-text-secondary font-medium mb-2">{analysisMessage}</p>
+                    <p className="text-text-tertiary text-sm">This may take a minute...</p>
                   </div>
                 )}
 

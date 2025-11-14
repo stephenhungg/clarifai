@@ -45,6 +45,17 @@ export async function uploadPaper(file: File): Promise<Paper> {
   return response.json();
 }
 
+export async function listPapers(): Promise<Paper[]> {
+  const response = await fetch(`${API_URL}/api/papers`);
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch papers');
+  }
+
+  const data = await response.json();
+  return data.papers || [];
+}
+
 export async function getPaper(paperId: string): Promise<Paper> {
   const response = await fetch(`${API_URL}/api/papers/${paperId}/status`);
 
