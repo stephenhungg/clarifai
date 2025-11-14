@@ -137,7 +137,30 @@ async def get_paper_concepts(paper_id: str) -> ConceptResponse:
 
     paper = papers_db[paper_id]
 
-    return ConceptResponse(concepts=paper.concepts, total_count=len(paper.concepts))
+    # Add video_status to each concept from concept_videos
+    concepts_with_status = []
+    for concept in paper.concepts:
+        concept_dict = concept.model_dump()
+        # Get video status from concept_videos if it exists
+        concept_video = paper.concept_videos.get(concept.id)
+        if concept_video:
+            # Map VideoStatus enum to frontend expected values
+            status_map = {
+                "not_started": "not_generated",
+                "generating": "generating",
+                "completed": "ready",
+                "failed": "error"
+            }
+            concept_dict["video_status"] = status_map.get(concept_video.status.value, "not_generated")
+            if concept_video.video_path:
+                concept_dict["video_url"] = concept_video.video_path
+        else:
+            concept_dict["video_status"] = "not_generated"
+        
+        concepts_with_status.append(concept_dict)
+
+    # Return as dict with video_status, not as Concept objects
+    return {"concepts": concepts_with_status, "total_count": len(concepts_with_status)}
 
 
 @router.delete("/papers/{paper_id}/concepts/{concept_id}")
@@ -347,11 +370,38 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
         )
 
         if new_concept_data:
+            name = new_concept_data.get("name", "")
+            description = new_concept_data.get("description", "")
+
+            # Filter out generic/fallback concepts
+            is_generic = (
+                not name
+                or not description
+                or len(name) <= 3
+                or len(description) <= 10
+                or name.lower().startswith("key concept from")
+                or "temporarily unavailable" in description.lower()
+                or "clear, descriptive name" in description.lower()
+                or "Research Implementation Details" in name
+                or "Performance Optimization Strategy" in name
+                or "Experimental Design Framework" in name
+                or "Technical Analysis Method" in name
+                or "Data Processing Technique" in name
+                or "Statistical Evaluation Approach" in name
+            )
+
+            if is_generic:
+                print(f"Rejected generic fallback concept: '{name}'")
+                return {
+                    "success": False,
+                    "message": "Generated concept was too generic. Please try again.",
+                }
+
             # Create new concept object
             new_concept = Concept(
                 id=str(uuid.uuid4()),
-                name=new_concept_data["name"],
-                description=new_concept_data["description"],
+                name=name,
+                description=description,
                 importance_score=new_concept_data["importance_score"],
                 page_numbers=[],
                 text_snippets=[],
@@ -372,7 +422,7 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
                     "name": new_concept.name,
                     "description": new_concept.description,
                     "importance_score": new_concept.importance_score,
-                    "concept_type": new_concept.concept_type,
+                    "type": new_concept.concept_type,  # Frontend expects "type" not "concept_type"
                 },
                 "total_concepts": len(paper.concepts),
             }

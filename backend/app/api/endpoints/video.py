@@ -54,13 +54,21 @@ async def run_agent_script(
 
     async for line in process.stdout:
         decoded_line = line.decode("utf-8").strip()
+        
+        # Print to console for debugging
+        print(f"Agent output: {decoded_line}")
 
         if decoded_line.startswith("LOG: "):
             log_message = decoded_line[5:]
+            print(f"Sending log via WebSocket: {log_message}")
             if manager:
-                await manager.send_log(
-                    paper_id, json.dumps({"type": "log", "message": log_message})
-                )
+                try:
+                    await manager.send_log(
+                        paper_id, json.dumps({"type": "log", "message": log_message})
+                    )
+                    print(f"Log sent successfully")
+                except Exception as e:
+                    print(f"Error sending log: {e}")
         elif decoded_line.startswith("CLIP_SUCCESS: "):
             clip_path = decoded_line[14:]
             successful_clips.append(clip_path)
@@ -227,9 +235,19 @@ async def generate_video_for_concept(
     if not concept:
         raise HTTPException(status_code=404, detail="Concept not found")
 
-    if any(cv.status == VideoStatus.GENERATING for cv in paper.concept_videos.values()):
+    # Check if this specific concept already has a video being generated
+    existing_video = paper.concept_videos.get(concept_id)
+    if existing_video and existing_video.status == VideoStatus.GENERATING:
         raise HTTPException(
-            status_code=400, detail="A video is already being generated for this paper."
+            status_code=400, detail="A video is already being generated for this concept."
+        )
+
+    # Allow multiple videos to be generated simultaneously for different concepts
+    # But check if there are too many concurrent generations (limit to 3)
+    generating_count = sum(1 for cv in paper.concept_videos.values() if cv.status == VideoStatus.GENERATING)
+    if generating_count >= 3:
+        raise HTTPException(
+            status_code=400, detail="Too many videos are being generated simultaneously. Please wait for one to complete."
         )
 
     paper.concept_videos[concept_id] = ConceptVideo(

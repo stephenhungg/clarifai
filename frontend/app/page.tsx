@@ -56,9 +56,11 @@ export default function Home() {
 
     try {
       const paper = await uploadPaper(file);
+      console.log('Upload successful, redirecting to:', `/papers/${paper.id}`);
       router.push(`/papers/${paper.id}`);
     } catch (err) {
-      setError('Failed to upload paper. Please try again.');
+      console.error('Upload error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to upload paper. Please try again.');
       setIsUploading(false);
     }
   };

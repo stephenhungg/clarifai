@@ -14,6 +14,7 @@ import {
   generateAdditionalConcept,
   generateVideo,
   askQuestion,
+  connectToLogs,
   type Paper,
   type Concept,
   type ChatMessage,
@@ -43,7 +44,13 @@ export default function PaperDetailPage() {
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysisMessage, setAnalysisMessage] = useState<string>('Starting analysis...');
+  const [videoLogs, setVideoLogs] = useState<string[]>([]);
+  const [generatingConceptId, setGeneratingConceptId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!paperId) return;
@@ -63,6 +70,11 @@ export default function PaperDetailPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isAsking]);
+
+  // Auto-scroll logs when new log messages arrive
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [videoLogs]);
 
   // Poll for status updates when analyzing
   useEffect(() => {
@@ -169,12 +181,27 @@ export default function PaperDetailPage() {
   const handleGenerateConcept = async () => {
     if (!paperId) return;
     setIsGeneratingConcept(true);
+    setError(null);
 
     try {
-      const newConcept = await generateAdditionalConcept(paperId);
-      setConcepts((prev) => [...prev, newConcept]);
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/papers/${paperId}/generate-additional-concept`,
+        { method: 'POST' }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to generate concept');
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.new_concept) {
+        setConcepts((prev) => [...prev, data.new_concept]);
+      } else {
+        setError(data.message || 'Generated concept was too generic. Please try again.');
+      }
     } catch (err) {
-      setError('Failed to generate concept');
+      setError('Failed to generate concept. Please try again.');
     } finally {
       setIsGeneratingConcept(false);
     }
@@ -183,6 +210,8 @@ export default function PaperDetailPage() {
   const handleGenerateVideo = async (conceptId: string) => {
     if (!paperId) return;
     try {
+      setGeneratingConceptId(conceptId);
+      setVideoLogs([]);
       await generateVideo(paperId, conceptId);
       // Update concept status
       setConcepts((prev) =>
@@ -192,8 +221,126 @@ export default function PaperDetailPage() {
       );
     } catch (err) {
       setError('Failed to start video generation');
+      setGeneratingConceptId(null);
     }
   };
+
+  // Connect to WebSocket when video generation starts
+  useEffect(() => {
+    if (!paperId || !generatingConceptId) {
+      // Clean up if no longer generating
+      if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+        console.log('Cleaning up WebSocket - no longer generating');
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      if (statusIntervalRef.current) {
+        clearInterval(statusIntervalRef.current);
+        statusIntervalRef.current = null;
+      }
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+        statusTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    // Don't create a new connection if one already exists and is open
+    if (wsRef.current) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        console.log('WebSocket already connected, skipping');
+        return;
+      } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
+        console.log('WebSocket already connecting, skipping');
+        return;
+      } else {
+        // Connection is closed, clean it up
+        wsRef.current = null;
+      }
+    }
+
+    console.log('Creating new WebSocket connection for video logs');
+    const ws = connectToLogs(paperId);
+    wsRef.current = ws;
+    
+    ws.onopen = () => {
+      console.log('WebSocket connected for video logs');
+    };
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'log' && data.message) {
+          setVideoLogs((prev) => [...prev, data.message]);
+        } else if (data.type === 'connected') {
+          console.log('WebSocket connection confirmed:', data.message);
+        } else if (data.type === 'keepalive' || data.type === 'pong') {
+          // Ignore keepalive messages
+        }
+      } catch (err) {
+        // If not JSON, treat as plain text
+        setVideoLogs((prev) => [...prev, event.data]);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setError('Lost connection to video generation logs');
+    };
+    
+    ws.onclose = (event) => {
+      console.log('WebSocket closed:', event.code, event.reason);
+      wsRef.current = null;
+      if (event.code !== 1000) { // 1000 is normal closure
+        setError('Connection to video logs closed unexpectedly');
+      }
+    };
+    
+    // Poll for video status to detect completion
+    // Wait a bit before starting to poll to give the backend time to set status
+    statusTimeoutRef.current = setTimeout(() => {
+      statusIntervalRef.current = setInterval(async () => {
+        try {
+          const updatedConcepts = await getConcepts(paperId);
+          const updatedConcept = updatedConcepts.find((c) => c.id === generatingConceptId);
+          console.log('Polling video status:', updatedConcept?.video_status, 'for concept:', generatingConceptId);
+          if (updatedConcept && updatedConcept.video_status !== 'generating') {
+            console.log('Video generation completed, status:', updatedConcept.video_status);
+            if (statusIntervalRef.current) {
+              clearInterval(statusIntervalRef.current);
+              statusIntervalRef.current = null;
+            }
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.close(1000, 'Video generation completed');
+            }
+            setGeneratingConceptId(null);
+            setConcepts(updatedConcepts);
+          }
+        } catch (err) {
+          console.error('Failed to poll video status:', err);
+        }
+      }, 3000); // Poll every 3 seconds
+    }, 2000); // Start polling after 2 seconds
+    
+    // Cleanup
+    return () => {
+      console.log('Cleaning up WebSocket connection');
+      if (statusIntervalRef.current) {
+        clearInterval(statusIntervalRef.current);
+        statusIntervalRef.current = null;
+      }
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+        statusTimeoutRef.current = null;
+      }
+      if (wsRef.current) {
+        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+          wsRef.current.close();
+        }
+        wsRef.current = null;
+      }
+    };
+  }, [paperId, generatingConceptId]);
 
   const handleAskQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -324,132 +471,141 @@ export default function PaperDetailPage() {
             </div>
           </motion.div>
 
-          {/* 3-Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* PDF Viewer - Left Column (58%) */}
+          {/* Grid Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
+            {/* PDF Viewer - Left Side (Wide) */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="lg:col-span-7 xl:col-span-7"
+              className="lg:col-span-2"
             >
-              <div className="card h-[calc(100vh-200px)] overflow-hidden">
+              <div className="card h-full overflow-hidden">
                 <PDFViewer paperId={paperId} filename={paper.filename} />
               </div>
             </motion.div>
 
-            {/* Concepts List - Center Column (25%) */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="lg:col-span-3 xl:col-span-3"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Concepts</h2>
-                  <StatusBadge status={paper.status} size="sm" />
-                </div>
-
-                {paper.status === 'analyzing' && (
-                  <div className="card text-center py-8">
-                    <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-text-secondary font-medium mb-2">{analysisMessage}</p>
-                    <p className="text-text-tertiary text-sm">This may take a minute...</p>
+            {/* Right Side - Stacked Grid */}
+            <div className="lg:col-span-1 grid grid-rows-2 gap-6">
+              {/* Concepts List - Top Right */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="card h-full flex flex-col">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold">Concepts</h2>
+                    <StatusBadge status={paper.status} size="sm" />
                   </div>
-                )}
 
-                {paper.status === 'analyzed' && concepts.length === 0 && (
-                  <div className="card text-center py-8">
-                    <p className="text-text-secondary">No concepts found</p>
-                  </div>
-                )}
-
-                <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto">
-                  {concepts.map((concept, index) => (
-                    <motion.div
-                      key={concept.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3, delay: index * 0.05 }}
-                      className="card card-hover cursor-pointer"
-                      onClick={() => router.push(`/papers/${paperId}/concepts/${concept.id}`)}
-                    >
-                      <div className="mb-2">
-                        <h3 className="font-semibold mb-1">{concept.name}</h3>
-                        <div className="flex items-center gap-2 text-xs text-text-tertiary">
-                          <span className="px-2 py-0.5 bg-bg-hover rounded">{concept.type}</span>
-                          <span>• {Math.round(concept.importance_score * 100)}/100</span>
-                        </div>
+                  {paper.status === 'analyzing' && (
+                    <div className="flex-1 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin mx-auto mb-4" />
+                        <p className="text-text-secondary font-medium mb-2">{analysisMessage}</p>
+                        <p className="text-text-tertiary text-sm">This may take a minute...</p>
                       </div>
+                    </div>
+                  )}
 
-                      <p className="text-sm text-text-secondary line-clamp-2 mb-3">
-                        {concept.description}
-                      </p>
+                  {paper.status === 'analyzed' && concepts.length === 0 && (
+                    <div className="flex-1 flex items-center justify-center">
+                      <p className="text-text-secondary">No concepts found</p>
+                    </div>
+                  )}
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleGenerateVideo(concept.id);
-                        }}
-                        disabled={concept.video_status === 'generating'}
-                        className={`w-full text-sm py-2 px-3 rounded-md transition-colors ${
-                          concept.video_status === 'ready'
-                            ? 'bg-accent-success/10 text-accent-success border border-accent-success/30'
-                            : 'bg-bg-hover text-text-secondary border border-accent-border hover:border-text-primary'
-                        }`}
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                    {concepts.map((concept, index) => (
+                      <motion.div
+                        key={concept.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: index * 0.05 }}
+                        className="card card-hover cursor-pointer"
+                        onClick={() => router.push(`/papers/${paperId}/concepts/${concept.id}`)}
                       >
-                        {concept.video_status === 'ready'
-                          ? '✓ View Video'
-                          : concept.video_status === 'generating'
-                          ? 'Generating...'
-                          : 'Generate Video'}
-                      </button>
-                    </motion.div>
-                  ))}
-                </div>
+                        <div className="mb-2">
+                          <h3 className="font-semibold mb-1 text-sm">{concept.name}</h3>
+                          <div className="flex items-center gap-2 text-xs text-text-tertiary">
+                            <span className="px-2 py-0.5 bg-bg-hover rounded">{concept.type}</span>
+                            <span>• {Math.round(concept.importance_score * 100)}/100</span>
+                          </div>
+                        </div>
 
-                {paper.status === 'analyzed' && (
-                  <button
-                    onClick={handleGenerateConcept}
-                    disabled={isGeneratingConcept}
-                    className="w-full btn-secondary flex items-center justify-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    {isGeneratingConcept ? 'Generating...' : 'Generate Concept'}
-                  </button>
-                )}
-              </div>
-            </motion.div>
+                        <p className="text-xs text-text-secondary line-clamp-2 mb-2">
+                          {concept.description}
+                        </p>
 
-            {/* Sidebar - Right Column (17%) */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              className="lg:col-span-2 xl:col-span-2"
-            >
-              <div className="space-y-6">
-                {/* Paper Info */}
-                {paper.abstract && (
-                  <div className="card">
-                    <h3 className="font-semibold mb-3">Summary</h3>
-                    <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap break-words">
-                      {paper.abstract}
-                    </p>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleGenerateVideo(concept.id);
+                          }}
+                          disabled={concept.video_status === 'generating'}
+                          className={`w-full text-xs py-1.5 px-2 rounded-md transition-colors ${
+                            concept.video_status === 'ready'
+                              ? 'bg-accent-success/10 text-accent-success border border-accent-success/30'
+                              : 'bg-bg-hover text-text-secondary border border-accent-border hover:border-text-primary'
+                          }`}
+                        >
+                          {concept.video_status === 'ready'
+                            ? '✓ View Video'
+                            : concept.video_status === 'generating'
+                            ? 'Generating...'
+                            : 'Generate Video'}
+                        </button>
+                      </motion.div>
+                    ))}
                   </div>
-                )}
 
-                {/* Chat Section */}
-                <div className="card flex flex-col h-[600px]">
-                  <h3 className="font-semibold mb-3">Chat about this paper</h3>
+                  {paper.status === 'analyzed' && (
+                    <button
+                      onClick={handleGenerateConcept}
+                      disabled={isGeneratingConcept}
+                      className="w-full btn-secondary flex items-center justify-center gap-2 text-sm py-2 mt-4"
+                    >
+                      <Plus className="w-4 h-4" />
+                      {isGeneratingConcept ? 'Generating...' : 'Generate Concept'}
+                    </button>
+                  )}
+
+                  {/* Video Generation Logs */}
+                  {generatingConceptId && videoLogs.length > 0 && (
+                    <div className="mt-4 border-t border-accent-border pt-4">
+                      <h3 className="text-sm font-semibold mb-2 text-text-secondary">
+                        Video Generation Logs
+                      </h3>
+                      <div className="bg-bg-secondary rounded-md p-3 max-h-40 overflow-y-auto text-xs font-mono">
+                        {videoLogs.map((log, index) => (
+                          <div key={index} className="text-text-tertiary mb-1">
+                            {log}
+                          </div>
+                        ))}
+                        <div ref={logsEndRef} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+
+              {/* Chat Section - Bottom Right */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                className="overflow-hidden"
+              >
+                <div className="card flex flex-col h-full">
+                  <h3 className="font-semibold mb-3">Chat</h3>
 
                   {/* Chat Messages */}
-                  <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+                  <div className="flex-1 overflow-y-auto space-y-3 mb-3 pr-2">
                     {messages.length === 0 && (
-                      <div className="text-center text-text-tertiary text-sm py-8">
-                        <p>Start a conversation about this paper</p>
-                        <p className="text-xs mt-2">Ask questions, get explanations, and dive deeper</p>
+                      <div className="text-center text-text-tertiary text-xs py-6">
+                        <p>Start a conversation</p>
+                        <p className="text-xs mt-1">Ask questions about the paper</p>
                       </div>
                     )}
                     {messages.map((message, index) => (
@@ -460,13 +616,13 @@ export default function PaperDetailPage() {
                         className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
-                          className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                          className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-xs ${
                             message.role === 'user'
                               ? 'bg-text-primary text-bg-primary'
                               : 'bg-bg-hover text-text-secondary'
                           }`}
                         >
-                          <p className="leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                          <p className="leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                         </div>
                       </motion.div>
                     ))}
@@ -476,9 +632,9 @@ export default function PaperDetailPage() {
                         animate={{ opacity: 1 }}
                         className="flex justify-start"
                       >
-                        <div className="bg-bg-hover rounded-lg px-3 py-2 text-sm">
+                        <div className="bg-bg-hover rounded-lg px-2.5 py-1.5 text-xs">
                           <div className="flex items-center gap-2 text-text-secondary">
-                            <div className="w-3 h-3 border-2 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+                            <div className="w-2.5 h-2.5 border-2 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
                             <span>Thinking...</span>
                           </div>
                         </div>
@@ -496,20 +652,20 @@ export default function PaperDetailPage() {
                         onChange={(e) => setQuestion(e.target.value)}
                         placeholder="Ask about this paper..."
                         disabled={isAsking}
-                        className="flex-1 bg-bg-secondary border border-accent-border rounded-md px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-text-primary transition-colors"
+                        className="flex-1 bg-bg-secondary border border-accent-border rounded-md px-2.5 py-1.5 text-xs text-text-primary placeholder-text-tertiary focus:outline-none focus:border-text-primary transition-colors"
                       />
                       <button
                         type="submit"
                         disabled={isAsking || !question.trim()}
-                        className="btn-primary flex items-center gap-2 px-4"
+                        className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs"
                       >
-                        <Send className="w-4 h-4" />
+                        <Send className="w-3 h-3" />
                       </button>
                     </div>
                   </form>
                 </div>
-              </div>
-            </motion.div>
+              </motion.div>
+            </div>
           </div>
         </div>
       </main>
