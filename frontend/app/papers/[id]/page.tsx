@@ -16,6 +16,7 @@ import {
   askQuestion,
   type Paper,
   type Concept,
+  type ChatMessage,
 } from '../../lib/api';
 
 // Helper function to fix abstract text that has lost spaces
@@ -38,10 +39,11 @@ export default function PaperDetailPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingConcept, setIsGeneratingConcept] = useState(false);
   const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isAsking, setIsAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysisMessage, setAnalysisMessage] = useState<string>('Starting analysis...');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!paperId) return;
@@ -56,6 +58,11 @@ export default function PaperDetailPage() {
       setIsAnalyzing(true);
     }
   }, [paper?.status]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isAsking]);
 
   // Poll for status updates when analyzing
   useEffect(() => {
@@ -193,14 +200,30 @@ export default function PaperDetailPage() {
     if (!paperId) return;
     if (!question.trim()) return;
 
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: question.trim(),
+    };
+
+    // Add user message to chat
+    setMessages((prev) => [...prev, userMessage]);
+    const currentQuestion = question.trim();
+    setQuestion('');
     setIsAsking(true);
-    setAnswer('');
 
     try {
-      const response = await askQuestion(paperId, question);
-      setAnswer(response.answer);
+      const response = await askQuestion(paperId, currentQuestion, messages);
+      
+      // Add assistant response to chat
+      const assistantMessage: ChatMessage = {
+        role: 'assistant',
+        content: response.answer,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
       setError('Failed to get answer');
+      // Remove the user message if request failed
+      setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsAsking(false);
     }
@@ -303,24 +326,24 @@ export default function PaperDetailPage() {
 
           {/* 3-Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* PDF Viewer - Left Column (40%) */}
+            {/* PDF Viewer - Left Column (58%) */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="lg:col-span-5 xl:col-span-5"
+              className="lg:col-span-7 xl:col-span-7"
             >
               <div className="card h-[calc(100vh-200px)] overflow-hidden">
                 <PDFViewer paperId={paperId} filename={paper.filename} />
               </div>
             </motion.div>
 
-            {/* Concepts List - Center Column (35%) */}
+            {/* Concepts List - Center Column (25%) */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="lg:col-span-4 xl:col-span-4"
+              className="lg:col-span-3 xl:col-span-3"
             >
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -356,7 +379,7 @@ export default function PaperDetailPage() {
                         <h3 className="font-semibold mb-1">{concept.name}</h3>
                         <div className="flex items-center gap-2 text-xs text-text-tertiary">
                           <span className="px-2 py-0.5 bg-bg-hover rounded">{concept.type}</span>
-                          <span>• {concept.importance_score}/100</span>
+                          <span>• {Math.round(concept.importance_score * 100)}/100</span>
                         </div>
                       </div>
 
@@ -399,29 +422,73 @@ export default function PaperDetailPage() {
               </div>
             </motion.div>
 
-            {/* Sidebar - Right Column (25%) */}
+            {/* Sidebar - Right Column (17%) */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.3 }}
-              className="lg:col-span-3 xl:col-span-3"
+              className="lg:col-span-2 xl:col-span-2"
             >
               <div className="space-y-6">
                 {/* Paper Info */}
                 {paper.abstract && (
                   <div className="card">
-                    <h3 className="font-semibold mb-3">Abstract</h3>
+                    <h3 className="font-semibold mb-3">Summary</h3>
                     <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap break-words">
-                      {fixAbstractSpacing(paper.abstract)}
+                      {paper.abstract}
                     </p>
                   </div>
                 )}
 
-                {/* Q&A Section */}
-                <div className="card">
-                  <h3 className="font-semibold mb-3">Ask Questions</h3>
+                {/* Chat Section */}
+                <div className="card flex flex-col h-[600px]">
+                  <h3 className="font-semibold mb-3">Chat about this paper</h3>
 
-                  <form onSubmit={handleAskQuestion} className="mb-4">
+                  {/* Chat Messages */}
+                  <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+                    {messages.length === 0 && (
+                      <div className="text-center text-text-tertiary text-sm py-8">
+                        <p>Start a conversation about this paper</p>
+                        <p className="text-xs mt-2">Ask questions, get explanations, and dive deeper</p>
+                      </div>
+                    )}
+                    {messages.map((message, index) => (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                            message.role === 'user'
+                              ? 'bg-text-primary text-bg-primary'
+                              : 'bg-bg-hover text-text-secondary'
+                          }`}
+                        >
+                          <p className="leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                        </div>
+                      </motion.div>
+                    ))}
+                    {isAsking && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex justify-start"
+                      >
+                        <div className="bg-bg-hover rounded-lg px-3 py-2 text-sm">
+                          <div className="flex items-center gap-2 text-text-secondary">
+                            <div className="w-3 h-3 border-2 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+                            <span>Thinking...</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  {/* Chat Input */}
+                  <form onSubmit={handleAskQuestion} className="mt-auto">
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -434,29 +501,12 @@ export default function PaperDetailPage() {
                       <button
                         type="submit"
                         disabled={isAsking || !question.trim()}
-                        className="btn-primary flex items-center gap-2"
+                        className="btn-primary flex items-center gap-2 px-4"
                       >
                         <Send className="w-4 h-4" />
                       </button>
                     </div>
                   </form>
-
-                  {isAsking && (
-                    <div className="flex items-center gap-2 text-sm text-text-secondary">
-                      <div className="w-4 h-4 border-2 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
-                      <span>Thinking...</span>
-                    </div>
-                  )}
-
-                  {answer && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="p-3 bg-bg-hover rounded-md"
-                    >
-                      <p className="text-sm text-text-secondary leading-relaxed">{answer}</p>
-                    </motion.div>
-                  )}
                 </div>
               </div>
             </motion.div>

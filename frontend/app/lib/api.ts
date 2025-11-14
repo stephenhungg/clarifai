@@ -144,16 +144,28 @@ export async function getCodeImplementation(
 }
 
 // Q&A API
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export async function askQuestion(
   paperId: string,
-  question: string
+  question: string,
+  conversationHistory: ChatMessage[] = []
 ): Promise<{ answer: string }> {
   const response = await fetch(`${API_URL}/api/papers/${paperId}/clarify`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ 
+      question,
+      conversation_history: conversationHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+    }),
   });
 
   if (!response.ok) {

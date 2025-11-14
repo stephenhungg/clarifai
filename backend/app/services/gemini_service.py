@@ -387,7 +387,7 @@ Return ONLY the Python class code:
 
     async def clarify_text_with_gemini(self, text: str, context: str = "") -> str:
         """
-        Use Gemini to answer questions about research papers or clarify specific text
+        Use Gemini to answer questions about research papers with conversation context
         """
         if not self.client:
             return "Clarification service temporarily unavailable."
@@ -395,16 +395,18 @@ Return ONLY the Python class code:
         try:
             # Determine if it's a question or text to clarify
             is_question = text.strip().endswith("?") or any(
-                word in text.lower() for word in ["what", "how", "why", "when", "where", "explain", "describe"]
+                word in text.lower() for word in ["what", "how", "why", "when", "where", "explain", "describe", "tell me", "can you"]
             )
             
             if is_question:
-                prompt = f"""Answer this question about the research paper. Be clear, concise, and accurate.
+                prompt = f"""You are a helpful assistant answering questions about a research paper. Use the context provided to give accurate, conversational answers.
 
-Question: "{text}"
-Context: {context}
+Context about the paper:
+{context}
 
-Provide a helpful answer in 2-4 sentences based on the paper content. If the answer isn't in the provided context, say so. No markdown formatting, just plain text."""
+User's question: "{text}"
+
+Provide a helpful, conversational answer based on the paper content. If the answer isn't in the provided context, say so. Keep responses concise (2-4 sentences) but natural. No markdown formatting, just plain text. Reference previous conversation if relevant."""
             else:
                 prompt = f"""Explain this research text in simple terms. Be concise and avoid markdown formatting.
 
@@ -415,7 +417,7 @@ Provide a clear, direct explanation in 2-3 sentences. No bullet points, no markd
 
             response = await self._call_gemini_api(prompt)
             return (
-                response
+                response.strip()
                 if response
                 else "Unable to provide clarification at this time."
             )
@@ -424,9 +426,47 @@ Provide a clear, direct explanation in 2-3 sentences. No bullet points, no markd
             print(f"Error in Gemini clarification: {e}")
             return "Unable to provide clarification at this time."
 
+    async def generate_paper_summary(self, content: str, title: str = "") -> str:
+        """
+        Generate a concise summary of the research paper using Gemini
+        """
+        if not self.client:
+            return "Summary generation temporarily unavailable."
+
+        try:
+            # Use more content for better summary (up to 8000 chars)
+            content_preview = content[:8000]
+            
+            prompt = f"""Generate a clear, concise summary of this research paper. Write it as if you're explaining the paper to someone who wants to understand its main contributions.
+
+Paper Title: {title}
+Paper Content: {content_preview}
+
+Write a summary that:
+- Explains the main research question or problem addressed
+- Describes the key methodology or approach
+- Highlights the most important findings or contributions
+- Is written in clear, accessible language
+- Is 3-5 sentences long
+- Does NOT include markdown formatting
+- Does NOT repeat the title
+
+Summary:"""
+
+            response = await self._call_gemini_api(prompt)
+            return (
+                response.strip()[:1000]  # Limit to 1000 chars
+                if response
+                else "Unable to generate summary at this time."
+            )
+
+        except Exception as e:
+            print(f"Error generating paper summary: {e}")
+            return "Unable to generate summary at this time."
+
     async def extract_paper_metadata_with_gemini(self, content: str) -> Dict[str, Any]:
         """
-        Use Gemini to intelligently extract paper title, authors, and abstract
+        Use Gemini to intelligently extract paper title, authors, and generate summary
         """
         if not self.client:
             return {"title": "", "authors": [], "abstract": ""}
@@ -439,19 +479,16 @@ Text: {content[:3000]}
 Please extract:
 1. TITLE: The exact title of the research paper (not repeated or with "by")
 2. AUTHORS: List of author names (first and last names)
-3. ABSTRACT: The paper's abstract section
 
 Return in JSON format:
 {{
     "title": "Exact Paper Title Here",
-    "authors": ["Author One", "Author Two", "Author Three"],
-    "abstract": "The complete abstract text here..."
+    "authors": ["Author One", "Author Two", "Author Three"]
 }}
 
 Rules:
 - Title should be the actual paper title, not repeated
 - Authors should be real names only, no affiliations
-- Abstract should be the complete abstract section
 - If any field is unclear, use empty string or empty array
 
 JSON:"""
@@ -467,20 +504,27 @@ JSON:"""
                         json_str = response[start:end]
                         metadata = json.loads(json_str)
 
+                        title = metadata.get("title", "")[:200]
+                        authors = metadata.get("authors", [])[:5]  # Limit to 5 authors
+                        
+                        # Generate summary separately with more content
+                        summary = await self.generate_paper_summary(content, title)
+                        
                         return {
-                            "title": metadata.get("title", "")[:200],
-                            "authors": metadata.get("authors", [])[
-                                :5
-                            ],  # Limit to 5 authors
-                            "abstract": metadata.get("abstract", "")[
-                                :800
-                            ],  # Limit abstract length
+                            "title": title,
+                            "authors": authors,
+                            "abstract": summary,  # Store summary as "abstract" for compatibility
                         }
                 except (json.JSONDecodeError, KeyError) as e:
                     print(f"JSON parsing failed for metadata: {e}")
 
                 # Fallback to text parsing if JSON fails
-                return self._parse_metadata_from_text(response)
+                parsed = self._parse_metadata_from_text(response)
+                # Generate summary even if JSON parsing failed
+                if parsed.get("title"):
+                    summary = await self.generate_paper_summary(content, parsed.get("title", ""))
+                    parsed["abstract"] = summary
+                return parsed
 
             return {"title": "", "authors": [], "abstract": ""}
 
@@ -507,8 +551,7 @@ JSON:"""
                     # Try to parse author list
                     authors = [a.strip().strip('"') for a in authors_text.split(",")]
                     metadata["authors"] = authors[:5]
-            elif line.lower().startswith("abstract:"):
-                metadata["abstract"] = line[9:].strip().strip('"')
+            # Note: abstract/summary is now generated separately, not parsed
 
         return metadata
 

@@ -182,7 +182,7 @@ export default function ConceptDetailPage() {
                   <span className="px-2 py-1 bg-bg-tertiary border border-accent-border rounded">
                     {concept.type}
                   </span>
-                  <span>Importance: {concept.importance_score}/100</span>
+                  <span>Importance: {Math.round(concept.importance_score * 100)}/100</span>
                 </div>
               </div>
 

@@ -3,14 +3,14 @@ Analysis API endpoints for paper concept extraction and clarification
 """
 
 import uuid
-from typing import Dict, Any
+from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from ...models.paper import ConceptResponse, Concept
 from ...services.gemini_service import GeminiService
-from .upload import papers_db  # Import shared papers database
+from .upload import papers_db, save_papers_to_disk  # Import shared papers database and save function
 
 router = APIRouter()
 
@@ -22,10 +22,15 @@ class AnalyzeRequest(BaseModel):
     paper_id: str
 
 
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
 class ClarifyRequest(BaseModel):
     question: str = ""
     text_snippet: str = ""  # Keep for backward compatibility
     context: str = ""
+    conversation_history: List[ChatMessage] = []  # Previous messages in the conversation
 
 
 @router.post("/papers/{paper_id}/analyze")
@@ -109,6 +114,7 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
         paper.full_analysis = analysis_result["full_analysis"]
 
         print(f"Analysis completed for paper: {paper.title}")
+        save_papers_to_disk()  # Save after analysis
 
         return {
             "message": "Analysis completed successfully",
@@ -154,9 +160,9 @@ async def delete_concept(paper_id: str, concept_id: str) -> Dict[str, str]:
 
 
 @router.post("/papers/{paper_id}/clarify")
-async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, str]:
+async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, Any]:
     """
-    Answer questions about a paper or clarify specific text
+    Answer questions about a paper with conversation history support
     """
     if paper_id not in papers_db:
         raise HTTPException(status_code=404, detail="Paper not found")
@@ -173,20 +179,31 @@ async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, str]
         # Build context with paper information
         context_parts = [f"Paper title: {paper.title}"]
         if paper.abstract:
-            context_parts.append(f"Abstract: {paper.abstract[:500]}")
+            context_parts.append(f"Summary: {paper.abstract[:500]}")
+        if paper.content:
+            context_parts.append(f"Paper content (first 2000 chars): {paper.content[:2000]}")
         if request.context:
             context_parts.append(request.context)
         
-        context = ". ".join(context_parts)
+        base_context = ". ".join(context_parts)
 
-        # Use Gemini to answer the question or clarify the text
+        # Build conversation history for context
+        conversation_context = ""
+        if request.conversation_history:
+            conversation_context = "\n\nPrevious conversation:\n"
+            for msg in request.conversation_history[-5:]:  # Last 5 messages for context
+                conversation_context += f"{msg.role}: {msg.content}\n"
+        
+        full_context = base_context + conversation_context
+
+        # Use Gemini to answer the question with conversation context
         explanation = await gemini_service.clarify_text_with_gemini(
             text=query_text,
-            context=context,
+            context=full_context,
         )
 
         return {
-            "answer": explanation,  # Frontend expects "answer"
+            "answer": explanation,
             "question": query_text,
             "paper_title": paper.title,
         }
@@ -292,6 +309,7 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
         print(
             f"Concepts refreshed for paper: {paper.title} ({len(paper.concepts)} valid concepts)"
         )
+        save_papers_to_disk()  # Save after concept extraction
 
         return ConceptResponse(concepts=paper.concepts, total_count=len(paper.concepts))
 
@@ -343,6 +361,7 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
 
             # Add to existing concepts (don't replace)
             paper.concepts.append(new_concept)
+            save_papers_to_disk()  # Save after adding concept
 
             print(f"Generated additional concept: '{new_concept.name}'")
 
@@ -373,12 +392,11 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
 
 @router.post(
     "/papers/{paper_id}/concepts/{concept_name}/implement",
-    response_class=PlainTextResponse,
 )
 async def get_code_implementation(
     paper_id: str,
     concept_name: str,
-) -> str:
+) -> Dict[str, str]:
     """
     Generate a Python code implementation for a given concept.
     """
@@ -386,17 +404,21 @@ async def get_code_implementation(
         raise HTTPException(status_code=404, detail="Paper not found")
 
     paper = papers_db[paper_id]
-    concept = next((c for c in paper.concepts if c.name == concept_name), None)
+    # Decode URL-encoded concept name
+    from urllib.parse import unquote
+    decoded_concept_name = unquote(concept_name)
+    concept = next((c for c in paper.concepts if c.name == decoded_concept_name), None)
     if not concept:
-        raise HTTPException(status_code=404, detail="Concept not found")
+        raise HTTPException(status_code=404, detail=f"Concept not found: {decoded_concept_name}")
 
     try:
         gemini_service = GeminiService()
         code = await gemini_service.generate_python_implementation(
             concept.name, concept.description
         )
-        return code
+        return {"code": code}
     except Exception as e:
+        print(f"Code generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Code generation failed: {str(e)}")
 
 

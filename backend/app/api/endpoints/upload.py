@@ -4,7 +4,9 @@ Upload API endpoints for PDF file handling
 
 import os
 import uuid
+import json
 from typing import Dict, Any
+from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 
@@ -15,8 +17,63 @@ from ...services.gemini_service import GeminiService
 
 router = APIRouter()
 
-# In-memory storage for demo (replace with database in production)
+# Persistence file path
+PERSISTENCE_FILE = Path("storage/papers_db.json")
+
+# In-memory storage (loaded from disk on startup)
 papers_db: Dict[str, Paper] = {}
+
+
+def load_papers_from_disk():
+    """Load papers from JSON file on startup"""
+    global papers_db
+    if PERSISTENCE_FILE.exists():
+        try:
+            with open(PERSISTENCE_FILE, "r") as f:
+                data = json.load(f)
+                papers_db = {}
+                for paper_id, paper_data in data.items():
+                    # Convert datetime strings back to datetime objects
+                    from datetime import datetime
+                    if "upload_time" in paper_data and isinstance(paper_data["upload_time"], str):
+                        paper_data["upload_time"] = datetime.fromisoformat(paper_data["upload_time"])
+                    
+                    # Handle ConceptVideo datetime fields
+                    if "concept_videos" in paper_data:
+                        for concept_id, video_data in paper_data["concept_videos"].items():
+                            if "created_at" in video_data and isinstance(video_data["created_at"], str):
+                                video_data["created_at"] = datetime.fromisoformat(video_data["created_at"])
+                    
+                    # Reconstruct Paper object from dict
+                    paper = Paper(**paper_data)
+                    papers_db[paper_id] = paper
+            print(f"Loaded {len(papers_db)} papers from disk")
+        except Exception as e:
+            print(f"Error loading papers from disk: {e}")
+            import traceback
+            traceback.print_exc()
+            papers_db = {}
+
+
+def save_papers_to_disk():
+    """Save papers to JSON file"""
+    try:
+        # Ensure directory exists
+        PERSISTENCE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Convert Paper objects to dicts
+        data = {}
+        for paper_id, paper in papers_db.items():
+            data[paper_id] = paper.model_dump(mode='json')
+        
+        with open(PERSISTENCE_FILE, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+    except Exception as e:
+        print(f"Error saving papers to disk: {e}")
+
+
+# Load papers on module import
+load_papers_from_disk()
 
 # Initialize services
 pdf_parser = PDFParser()
@@ -55,6 +112,7 @@ async def upload_pdf(
         paper = Paper.create_new(filename=file.filename, file_path=file_path)
         paper.id = paper_id
         papers_db[paper_id] = paper
+        save_papers_to_disk()  # Save immediately
 
         # Start background processing
         background_tasks.add_task(process_paper, paper_id)
@@ -171,7 +229,9 @@ async def process_paper(paper_id: str):
             ai_metadata.get("title") or parse_result["title"] or paper.filename
         )
         paper.authors = ai_metadata.get("authors") or parse_result["authors"]
-        paper.abstract = ai_metadata.get("abstract") or parse_result["abstract"]
+        # Use generated summary (stored as "abstract" for compatibility)
+        # If summary generation failed, fall back to extracted abstract
+        paper.abstract = ai_metadata.get("abstract") or parse_result.get("abstract", "")
 
         # Extract concepts automatically during processing
         print(f"Extracting concepts for paper {paper_id}")
@@ -238,10 +298,12 @@ async def process_paper(paper_id: str):
 
         paper.analysis_status = AnalysisStatus.COMPLETED
         print(f"Paper processing completed: {paper.title}")
+        save_papers_to_disk()  # Save after processing completes
 
     except Exception as e:
         print(f"Error processing paper {paper_id}: {e}")
         paper.analysis_status = AnalysisStatus.FAILED
+        save_papers_to_disk()  # Save even on failure
 
 
 @router.get("/papers/{paper_id}/pdf")
