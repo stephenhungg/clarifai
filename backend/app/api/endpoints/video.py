@@ -25,7 +25,8 @@ async def run_agent_script(
 ) -> Dict[str, Any]:
     project_root = Path(__file__).resolve().parents[4]
     agent_script_path = project_root / "backend/run_agent.py"
-    python_executable = project_root / "backend/agent_env/bin/python"
+    # Use system Python instead of agent_env
+    python_executable = "python3"
     api_key = settings.GEMINI_API_KEY
 
     if not api_key:
@@ -276,10 +277,18 @@ async def get_concept_video_status(paper_id: str, concept_id: str) -> Dict[str, 
     concept_video = paper.concept_videos.get(concept_id)
 
     if not concept_video:
-        return {"video_status": "not_started", "logs": []}
+        return {"status": "not_started", "logs": []}
+
+    # Map backend status to frontend expected values
+    status_map = {
+        "not_started": "not_started",
+        "generating": "generating",
+        "completed": "completed",
+        "failed": "error"
+    }
 
     return {
-        "video_status": concept_video.status.value,
-        "video_path": concept_video.video_path,
+        "status": status_map.get(concept_video.status.value, "not_started"),
+        "video_url": concept_video.video_path,
         "logs": concept_video.logs,
     }
