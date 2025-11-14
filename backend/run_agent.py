@@ -5,8 +5,8 @@ import subprocess
 import tempfile
 import re
 from pathlib import Path
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage
+import google.genai as genai
+from google.genai import types
 
 
 def log(message):
@@ -25,14 +25,12 @@ def read_prompt_template(filename):
 def initialize_llm(api_key):
     """Initializes the language model with the provided API key."""
     log("--- DEBUG: Initializing LLM. ---")
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash", google_api_key=api_key, temperature=0.3
-    )
+    client = genai.Client(api_key=api_key)
     log("--- DEBUG: LLM Initialized successfully. ---")
-    return llm
+    return client
 
 
-def get_video_scenes(llm, concept_name, concept_description):
+def get_video_scenes(client, concept_name, concept_description):
     """Uses an AI call to split a concept into logical, thematic scenes for a video."""
     log("--- DEBUG: Calling LLM to determine video scenes. ---")
     template = read_prompt_template("split_scenes.txt")
@@ -42,8 +40,14 @@ def get_video_scenes(llm, concept_name, concept_description):
 
     log("--- PROMPT FOR SCENE SPLITTING ---")
     log(prompt)
-    response = llm.invoke([HumanMessage(content=prompt)])
-    response_text = response.content.strip()
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.3,
+        )
+    )
+    response_text = response.text.strip()
     log("--- AI RESPONSE (SCENES) ---")
     log(response_text)
 
@@ -90,29 +94,41 @@ def sanitize_code(code):
     return code
 
 
-def generate_manim_code(llm, description):
+def generate_manim_code(client, description):
     """Generates the initial Manim code for a single scene."""
     template = read_prompt_template("generate_code.txt")
     prompt = template.format(description=description)
 
     log("--- PROMPT FOR MANIM CODE ---")
     log(prompt)
-    response = llm.invoke([HumanMessage(content=prompt)])
-    code = response.content.strip()
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.3,
+        )
+    )
+    code = response.text.strip()
     log("--- AI RESPONSE (RAW CODE) ---")
     log(code)
     return sanitize_code(code)
 
 
-def correct_manim_code(llm, code, error):
+def correct_manim_code(client, code, error):
     """Corrects the Manim code based on an error message."""
     template = read_prompt_template("correct_code.txt")
     prompt = template.format(code=code, error=error)
 
     log("--- PROMPT FOR CODE CORRECTION ---")
     log(prompt)
-    response = llm.invoke([HumanMessage(content=prompt)])
-    new_code = response.content.strip()
+    response = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.3,
+        )
+    )
+    new_code = response.text.strip()
     log("--- AI RESPONSE (RAW CORRECTED CODE) ---")
     log(new_code)
     return sanitize_code(new_code)
@@ -200,9 +216,9 @@ def main():
             sys.argv[4],
         )
 
-        llm = initialize_llm(api_key)
+        client = initialize_llm(api_key)
 
-        scenes = get_video_scenes(llm, concept_name, concept_description)
+        scenes = get_video_scenes(client, concept_name, concept_description)
         successful_clips = 0
 
         for i, scene_description in enumerate(scenes):
@@ -223,9 +239,9 @@ def main():
             for attempt in range(1, 4):
                 log("--- Clip " + str(i + 1) + ", Attempt " + str(attempt) + " ---")
                 if code is None:
-                    code = generate_manim_code(llm, scene_description)
+                    code = generate_manim_code(client, scene_description)
                 else:
-                    code = correct_manim_code(llm, code, error)
+                    code = correct_manim_code(client, code, error)
 
                 video_path, error = render_manim_code(code, output_dir, output_filename)
 
