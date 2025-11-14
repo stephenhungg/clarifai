@@ -29,6 +29,10 @@ async def run_agent_script(
     python_executable = "python3"
     api_key = settings.GEMINI_API_KEY
 
+    print(f"[VIDEO] API key present: {bool(api_key)}, length: {len(api_key) if api_key else 0}")
+    print(f"[VIDEO] Agent script path: {agent_script_path}")
+    print(f"[VIDEO] Output dir: {output_dir}")
+
     if not api_key:
         return {
             "success": False,
@@ -44,11 +48,15 @@ async def run_agent_script(
         api_key,
     ]
 
+    print(f"[VIDEO] Running command: {' '.join([cmd[0], cmd[1], cmd[2][:30], cmd[3][:30], cmd[4], '***API_KEY***'])}")
+
     process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+
+    print(f"[VIDEO] Process started with PID: {process.pid}")
 
     final_result = None
     successful_clips = []
