@@ -9,7 +9,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 
 from ...core.config import settings
-from ...models.paper import Paper, PaperResponse, AnalysisStatus
+from ...models.paper import Paper, PaperResponse, AnalysisStatus, Concept
 from ...services.pdf_parser import PDFParser
 from ...services.gemini_service import GeminiService
 
@@ -172,6 +172,69 @@ async def process_paper(paper_id: str):
         )
         paper.authors = ai_metadata.get("authors") or parse_result["authors"]
         paper.abstract = ai_metadata.get("abstract") or parse_result["abstract"]
+
+        # Extract concepts automatically during processing
+        print(f"Extracting concepts for paper {paper_id}")
+        try:
+            concepts_data = await gemini_service.generate_concepts_with_gemini(
+                paper.content
+            )
+
+            print(f"Raw concepts from Gemini: {len(concepts_data)} concepts")
+            for concept in concepts_data:
+                print(
+                    f"   - '{concept.get('name', 'NO_NAME')}': {concept.get('description', 'NO_DESC')[:50]}..."
+                )
+
+            # Filter out generic/fallback concepts
+            valid_concepts_data = []
+            for concept_data in concepts_data:
+                name = concept_data.get("name", "")
+                description = concept_data.get("description", "")
+
+                # Filter out obvious generic patterns
+                is_generic = (
+                    not name
+                    or not description
+                    or len(name) <= 3
+                    or len(description) <= 10
+                    or name.lower().startswith("key concept from")
+                    or "temporarily unavailable" in description.lower()
+                    or "clear, descriptive name" in description.lower()
+                    or "Research Implementation Details" in name
+                    or "Performance Optimization Strategy" in name
+                    or "Experimental Design Framework" in name
+                    or "Technical Analysis Method" in name
+                    or "Data Processing Technique" in name
+                    or "Statistical Evaluation Approach" in name
+                )
+
+                if not is_generic:
+                    valid_concepts_data.append(concept_data)
+                    print(f"Valid concept: '{name}'")
+                else:
+                    print(f"Filtered out generic concept: '{name}'")
+
+            # Convert to Concept objects
+            paper.concepts = []
+            for concept_data in valid_concepts_data:
+                concept = Concept(
+                    id=str(uuid.uuid4()),
+                    name=concept_data["name"],
+                    description=concept_data["description"],
+                    importance_score=concept_data["importance_score"],
+                    page_numbers=[],
+                    text_snippets=[],
+                    related_concepts=[],
+                    concept_type=concept_data.get("concept_type", "conceptual"),
+                )
+                paper.concepts.append(concept)
+
+            print(f"Extracted {len(paper.concepts)} valid concepts for paper: {paper.title}")
+        except Exception as e:
+            print(f"Concept extraction failed (non-fatal): {e}")
+            # Don't fail the whole processing if concept extraction fails
+            paper.concepts = []
 
         paper.analysis_status = AnalysisStatus.COMPLETED
         print(f"Paper processing completed: {paper.title}")

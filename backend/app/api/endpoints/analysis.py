@@ -23,7 +23,8 @@ class AnalyzeRequest(BaseModel):
 
 
 class ClarifyRequest(BaseModel):
-    text_snippet: str
+    question: str = ""
+    text_snippet: str = ""  # Keep for backward compatibility
     context: str = ""
 
 
@@ -73,6 +74,12 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
                 name.lower().startswith("key concept from")
                 or "temporarily unavailable" in description.lower()
                 or "clear, descriptive name" in description.lower()
+                or "Research Implementation Details" in name
+                or "Performance Optimization Strategy" in name
+                or "Experimental Design Framework" in name
+                or "Technical Analysis Method" in name
+                or "Data Processing Technique" in name
+                or "Statistical Evaluation Approach" in name
             )
 
             if not is_generic:
@@ -149,7 +156,7 @@ async def delete_concept(paper_id: str, concept_id: str) -> Dict[str, str]:
 @router.post("/papers/{paper_id}/clarify")
 async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, str]:
     """
-    Get clarification for specific text from a paper
+    Answer questions about a paper or clarify specific text
     """
     if paper_id not in papers_db:
         raise HTTPException(status_code=404, detail="Paper not found")
@@ -157,15 +164,30 @@ async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, str]
     paper = papers_db[paper_id]
 
     try:
-        # Use Gemini to clarify the text
+        # Support both question format and text_snippet format
+        query_text = request.question if request.question else request.text_snippet
+        
+        if not query_text:
+            raise HTTPException(status_code=400, detail="Question or text_snippet is required")
+
+        # Build context with paper information
+        context_parts = [f"Paper title: {paper.title}"]
+        if paper.abstract:
+            context_parts.append(f"Abstract: {paper.abstract[:500]}")
+        if request.context:
+            context_parts.append(request.context)
+        
+        context = ". ".join(context_parts)
+
+        # Use Gemini to answer the question or clarify the text
         explanation = await gemini_service.clarify_text_with_gemini(
-            text=request.text_snippet,
-            context=f"Paper title: {paper.title}. {request.context}",
+            text=query_text,
+            context=context,
         )
 
         return {
-            "text_snippet": request.text_snippet,
-            "explanation": explanation,
+            "answer": explanation,  # Frontend expects "answer"
+            "question": query_text,
             "paper_title": paper.title,
         }
 
@@ -238,6 +260,12 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
                 name.lower().startswith("key concept from")
                 or "temporarily unavailable" in description.lower()
                 or "clear, descriptive name" in description.lower()
+                or "Research Implementation Details" in name
+                or "Performance Optimization Strategy" in name
+                or "Experimental Design Framework" in name
+                or "Technical Analysis Method" in name
+                or "Data Processing Technique" in name
+                or "Statistical Evaluation Approach" in name
             )
 
             if not is_generic:

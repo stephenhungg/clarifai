@@ -387,18 +387,31 @@ Return ONLY the Python class code:
 
     async def clarify_text_with_gemini(self, text: str, context: str = "") -> str:
         """
-        Use Gemini to clarify specific text from research papers
+        Use Gemini to answer questions about research papers or clarify specific text
         """
         if not self.client:
             return "Clarification service temporarily unavailable."
 
         try:
-            prompt = f"""Explain this research text in simple terms. Be concise and avoid markdown formatting.
+            # Determine if it's a question or text to clarify
+            is_question = text.strip().endswith("?") or any(
+                word in text.lower() for word in ["what", "how", "why", "when", "where", "explain", "describe"]
+            )
+            
+            if is_question:
+                prompt = f"""Answer this question about the research paper. Be clear, concise, and accurate.
 
 Question: "{text}"
 Context: {context}
 
-Provide a clear, direct answer in 2-3 sentences. No bullet points, no markdown formatting, just plain text explanation."""
+Provide a helpful answer in 2-4 sentences based on the paper content. If the answer isn't in the provided context, say so. No markdown formatting, just plain text."""
+            else:
+                prompt = f"""Explain this research text in simple terms. Be concise and avoid markdown formatting.
+
+Text: "{text}"
+Context: {context}
+
+Provide a clear, direct explanation in 2-3 sentences. No bullet points, no markdown formatting, just plain text explanation."""
 
             response = await self._call_gemini_api(prompt)
             return (

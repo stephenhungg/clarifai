@@ -18,6 +18,15 @@ import {
   type Concept,
 } from '../../lib/api';
 
+// Helper function to fix abstract text that has lost spaces
+function fixAbstractSpacing(text: string): string {
+  // Add space before capital letters that follow lowercase letters
+  let fixed = text.replace(/([a-z])([A-Z])/g, '$1 $2');
+  // Normalize multiple spaces to single space
+  fixed = fixed.replace(/\s+/g, ' ').trim();
+  return fixed;
+}
+
 export default function PaperDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
   const router = useRouter();
@@ -42,6 +51,9 @@ export default function PaperDetailPage() {
   useEffect(() => {
     if (paper?.status === 'analyzed') {
       loadConcepts();
+    } else if (paper?.status === 'analyzing') {
+      // If paper is already analyzing when page loads, start polling
+      setIsAnalyzing(true);
     }
   }, [paper?.status]);
 
@@ -267,14 +279,24 @@ export default function PaperDetailPage() {
                 )}
               </div>
 
-              {paper.status === 'uploaded' && (
-                <button
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing}
-                  className="btn-primary"
-                >
-                  {isAnalyzing ? 'Analyzing...' : 'Analyze Paper'}
-                </button>
+              {(paper.status === 'uploaded' || paper.status === 'analyzing') && (
+                <div className="flex items-center gap-2 text-text-secondary text-sm">
+                  {paper.status === 'analyzing' && (
+                    <>
+                      <div className="w-4 h-4 border-2 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+                      <span>Analyzing...</span>
+                    </>
+                  )}
+                  {paper.status === 'uploaded' && (
+                    <button
+                      onClick={handleAnalyze}
+                      disabled={isAnalyzing}
+                      className="btn-primary"
+                    >
+                      {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>
@@ -389,8 +411,8 @@ export default function PaperDetailPage() {
                 {paper.abstract && (
                   <div className="card">
                     <h3 className="font-semibold mb-3">Abstract</h3>
-                    <p className="text-sm text-text-secondary leading-relaxed">
-                      {paper.abstract}
+                    <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap break-words">
+                      {fixAbstractSpacing(paper.abstract)}
                     </p>
                   </div>
                 )}
