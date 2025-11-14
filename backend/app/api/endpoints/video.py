@@ -23,14 +23,21 @@ class GenerateVideoRequest(BaseModel):
 async def run_agent_script(
     paper_id: str, concept_name: str, concept_description: str, output_dir: str
 ) -> Dict[str, Any]:
-    project_root = Path(__file__).resolve().parents[4]
-    agent_script_path = project_root / "backend/run_agent.py"
+    # Find the backend directory by going up from this file
+    current_file = Path(__file__).resolve()
+    # This file is in backend/app/api/endpoints/video.py
+    # Go up to backend: parents[0]=endpoints, parents[1]=api, parents[2]=app, parents[3]=backend
+    backend_dir = current_file.parents[3]
+    agent_script_path = backend_dir / "run_agent.py"
+
     # Use system Python instead of agent_env
     python_executable = "python3"
     api_key = settings.GEMINI_API_KEY
 
     print(f"[VIDEO] API key present: {bool(api_key)}, length: {len(api_key) if api_key else 0}")
+    print(f"[VIDEO] Backend dir: {backend_dir}")
     print(f"[VIDEO] Agent script path: {agent_script_path}")
+    print(f"[VIDEO] Agent script exists: {agent_script_path.exists()}")
     print(f"[VIDEO] Output dir: {output_dir}")
 
     if not api_key:
@@ -156,9 +163,11 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
     try:
         await log("Handing off to agent for video generation...")
 
-        project_root = Path(__file__).resolve().parents[4]
-        clips_dir = project_root / "backend/clips"
-        videos_dir = project_root / "backend/videos"
+        # Find the backend directory
+        current_file = Path(__file__).resolve()
+        backend_dir = current_file.parents[3]
+        clips_dir = backend_dir / "clips"
+        videos_dir = backend_dir / "videos"
 
         output_dir = clips_dir / f"{paper_id}_{concept_id}"
         os.makedirs(output_dir, exist_ok=True)
