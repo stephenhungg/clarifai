@@ -61,7 +61,7 @@ async def upload_pdf(
 
         return {
             "message": "File uploaded successfully",
-            "paper_id": paper_id,
+            "id": paper_id,
             "filename": file.filename,
             "status": "processing",
         }
@@ -115,7 +115,7 @@ async def get_paper_status(paper_id: str) -> Dict[str, Any]:
 
     paper = papers_db[paper_id]
     return {
-        "paper_id": paper_id,
+        "id": paper_id,
         "analysis_status": paper.analysis_status.value,
         "video_status": paper.video_status.value,
         "concepts_count": len(paper.concepts),
