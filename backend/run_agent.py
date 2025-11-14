@@ -25,6 +25,9 @@ def read_prompt_template(filename):
 def initialize_llm(api_key):
     """Initializes the language model with the provided API key."""
     log("--- DEBUG: Initializing LLM. ---")
+    log(f"--- DEBUG: API key length: {len(api_key) if api_key else 0} ---")
+    if not api_key:
+        raise ValueError("API key must be set when using the Google AI API.")
     client = genai.Client(api_key=api_key)
     log("--- DEBUG: LLM Initialized successfully. ---")
     return client
