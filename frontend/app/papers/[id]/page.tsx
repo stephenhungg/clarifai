@@ -883,8 +883,8 @@ export default function PaperDetailPage() {
         </motion.div>
       </main>
       {selectedVideo ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-          <div className="relative w-full max-w-5xl bg-bg-primary rounded-2xl shadow-2xl border border-accent-border p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4 py-6">
+          <div className="relative w-full max-w-6xl h-[90vh] bg-bg-primary rounded-2xl shadow-2xl border border-accent-border p-6 flex flex-col overflow-hidden">
             <button
               onClick={() => setSelectedVideo(null)}
               className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors"
@@ -892,29 +892,29 @@ export default function PaperDetailPage() {
             >
               <X className="w-5 h-5" />
             </button>
-            <div className="space-y-6">
+            <div className="flex-1 flex flex-col gap-6 pt-4">
               <div className="flex flex-col gap-1">
                 <p className="text-xs uppercase tracking-wide text-text-tertiary">Now Playing</p>
                 <h3 className="text-lg font-semibold text-text-primary">{selectedVideo.name}</h3>
               </div>
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                <div className="bg-black rounded-xl overflow-hidden border border-accent-border">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] flex-1 min-h-0">
+                <div className="bg-black rounded-xl overflow-hidden border border-accent-border flex flex-col">
                   <video
                     key={selectedVideo.url}
                     controls
                     playsInline
-                    className="w-full h-full max-h-[70vh] bg-black"
+                    className="w-full h-full flex-1 min-h-0 bg-black object-contain"
                     src={selectedVideo.url}
                   />
                 </div>
-                <div className="bg-bg-secondary rounded-xl border border-accent-border p-4 flex flex-col">
+                <div className="bg-bg-secondary rounded-xl border border-accent-border p-4 flex flex-col min-h-0">
                   <div className="mb-3">
                     <p className="text-sm font-semibold text-text-primary">Scene Guide</p>
                     <p className="text-xs text-text-tertiary">
                       Follow along with the narration for each generated clip.
                     </p>
                   </div>
-                  <div className="overflow-y-auto pr-2">
+                  <div className="overflow-y-auto pr-2 flex-1 min-h-0">
                     {renderSceneGuide(selectedVideo, 'modal')}
                   </div>
                 </div>

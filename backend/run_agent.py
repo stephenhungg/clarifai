@@ -126,8 +126,65 @@ def replace_tex_with_text(code):
     code = re.sub(r"\b(?:MathTex|Tex)\s*\(", _sub, code)
     if replaced:
         log("--- DEBUG: Replaced Tex/MathTex with Text to avoid LaTeX dependency. ---")
-        # Remove raw-string prefixes immediately following Text(
-        code = code.replace("Text(r\"", "Text(\"").replace("Text(r'", "Text('")
+    return code
+
+
+def normalize_latex_markup(code):
+    """
+    Converts common LaTeX markup that slips through into friendly unicode/plain text
+    so Text() labels don't show raw commands like \\textbf{}.
+    """
+
+    def strip_wrapper(pattern, text):
+        def _repl(match):
+            return match.group(1)
+
+        return re.sub(pattern, _repl, text)
+
+    original_code = code
+    # Strip common wrappers
+    wrappers = [
+        r"\\textbf\{([^{}]+)\}",
+        r"\\textit\{([^{}]+)\}",
+        r"\\mathbf\{([^{}]+)\}",
+        r"\\mathit\{([^{}]+)\}",
+        r"\\text\{([^{}]+)\}",
+    ]
+    for pattern in wrappers:
+        code = strip_wrapper(pattern, code)
+
+    # Replace common commands with unicode equivalents
+    replacements = {
+        r"\\alpha": "α",
+        r"\\beta": "β",
+        r"\\gamma": "γ",
+        r"\\delta": "δ",
+        r"\\theta": "θ",
+        r"\\lambda": "λ",
+        r"\\mu": "μ",
+        r"\\pi": "π",
+        r"\\sigma": "σ",
+        r"\\phi": "φ",
+        r"\\psi": "ψ",
+        r"\\omega": "ω",
+        r"\\cdot": "·",
+        r"\\times": "×",
+        r"\\rightarrow": "→",
+        r"\\leftarrow": "←",
+        r"\\approx": "≈",
+        r"\\leq": "≤",
+        r"\\geq": "≥",
+        r"\\neq": "≠",
+    }
+    for needle, replacement in replacements.items():
+        code = code.replace(needle, replacement)
+
+    # Clean escaped braces leftover from \text{} removal
+    code = code.replace(r"\{", "{").replace(r"\}", "}")
+
+    if code != original_code:
+        log("--- DEBUG: Normalized LaTeX markup inside Text labels. ---")
+
     return code
 
 
@@ -171,6 +228,7 @@ def sanitize_code(code):
         log("--- DEBUG: Added missing 'from manim import *' import. ---")
 
     code = replace_tex_with_text(code)
+    code = normalize_latex_markup(code)
     code = ensure_rate_functions_usage(code)
 
     return code
