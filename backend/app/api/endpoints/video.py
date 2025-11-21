@@ -14,6 +14,13 @@ from ...core.config import settings
 from ...core.auth import verify_api_key
 from .upload import papers_db, save_papers_to_disk
 
+# Vercel Blob storage (optional, falls back to local storage)
+try:
+    from vercel_blob import put
+    VERCEL_BLOB_AVAILABLE = True
+except ImportError:
+    VERCEL_BLOB_AVAILABLE = False
+
 manager = None
 
 router = APIRouter()
@@ -208,6 +215,41 @@ async def run_agent_script(
     }
 
 
+async def upload_to_vercel_blob(file_path: str, file_name: str) -> Optional[str]:
+    """Upload video to Vercel Blob storage and return the URL"""
+    if not VERCEL_BLOB_AVAILABLE:
+        print("[BLOB] Vercel Blob SDK not available, skipping upload")
+        return None
+
+    blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
+    if not blob_token:
+        print("[BLOB] BLOB_READ_WRITE_TOKEN not set, skipping upload")
+        return None
+
+    try:
+        print(f"[BLOB] Uploading {file_name} to Vercel Blob...")
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+
+        # Upload to Vercel Blob
+        blob = put(
+            pathname=file_name,
+            body=file_data,
+            options={
+                "access": "public",
+                "token": blob_token,
+            }
+        )
+
+        print(f"[BLOB] Upload successful: {blob['url']}")
+        return blob["url"]
+    except Exception as e:
+        print(f"[BLOB] Upload failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 async def generate_video_background(paper_id: str, concept_id: str, concept: Concept):
     paper = papers_db.get(paper_id)
     if not paper:
@@ -228,12 +270,24 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
     try:
         await log("Handing off to agent for video generation...")
 
-        project_root = Path(__file__).resolve().parents[4]
-        clips_dir = project_root / "backend/clips"
-        videos_dir = project_root / "backend/videos"
+        # In Docker: WORKDIR=/app, so use /app/clips and /app/videos
+        # In dev: backend/app/api/endpoints/video.py -> go up to backend/ root
+        current_file = Path(__file__).resolve()
+
+        # Try to find backend root
+        # From backend/app/api/endpoints/video.py -> backend/app/api/endpoints -> backend/app/api -> backend/app -> backend
+        backend_root = current_file.parents[3]
+
+        # In Docker, we might be at /app instead of backend
+        if not (backend_root / "app").exists() and Path("/app").exists():
+            backend_root = Path("/app")
+
+        clips_dir = backend_root / "clips"
+        videos_dir = backend_root / "videos"
 
         output_dir = clips_dir / f"{paper_id}_{concept_id}"
         os.makedirs(output_dir, exist_ok=True)
+        print(f"[VIDEO] Using clips_dir: {clips_dir}, videos_dir: {videos_dir}")
 
         result = await run_agent_script(
             paper_id, concept.name, concept.description, str(output_dir)
@@ -258,8 +312,24 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
 
         if final_video_path:
             file_name = os.path.basename(final_video_path)
-            accessible_path = f"/api/videos/{file_name}"
-            await log(f"Video successfully stitched: {accessible_path}")
+            print(f"[VIDEO] Final video created at: {final_video_path}")
+            print(f"[VIDEO] File exists: {os.path.exists(final_video_path)}")
+            print(f"[VIDEO] File size: {os.path.getsize(final_video_path) if os.path.exists(final_video_path) else 'N/A'}")
+
+            # Try to upload to Vercel Blob first
+            blob_url = await upload_to_vercel_blob(final_video_path, file_name)
+
+            if blob_url:
+                # Use Vercel Blob URL
+                accessible_path = blob_url
+                await log(f"Video uploaded to Vercel Blob: {blob_url}")
+                print(f"[VIDEO] Using Vercel Blob URL: {blob_url}")
+            else:
+                # Fallback to local storage
+                accessible_path = f"/api/videos/{file_name}"
+                await log(f"Video available locally: {accessible_path}")
+                print(f"[VIDEO] Using local path: {accessible_path}")
+
             concept_video.video_path = accessible_path
             concept_video.status = VideoStatus.COMPLETED
             save_papers_to_disk()

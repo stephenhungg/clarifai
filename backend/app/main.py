@@ -72,6 +72,21 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/debug/videos")
+async def debug_videos():
+    """Debug endpoint to list videos directory contents"""
+    try:
+        files = list(videos_dir.glob("*"))
+        return {
+            "videos_dir": str(videos_dir),
+            "exists": videos_dir.exists(),
+            "files": [{"name": f.name, "size": f.stat().st_size, "path": str(f)} for f in files if f.is_file()],
+            "total_files": len([f for f in files if f.is_file()])
+        }
+    except Exception as e:
+        return {"error": str(e), "videos_dir": str(videos_dir)}
+
+
 @app.websocket("/ws/papers/{paper_id}/logs")
 async def websocket_endpoint(websocket: WebSocket, paper_id: str):
     await manager.connect(paper_id, websocket)
@@ -112,9 +127,20 @@ async def websocket_endpoint(websocket: WebSocket, paper_id: str):
 
 # --- THIS IS THE DEFINITIVE PATHING FIX ---
 # Mount the actual backend/videos directory (not app/videos) for download links.
+# In Docker: WORKDIR=/app, so videos are at /app/videos
+# In dev: working from backend/, so videos are at backend/videos
 backend_root = Path(__file__).resolve().parents[1]
 videos_dir = backend_root / "videos"
+
+# Fallback: if we're in Docker and videos_dir doesn't resolve correctly,
+# try checking if we're in /app (Docker WORKDIR)
+if not videos_dir.exists():
+    docker_videos_dir = Path("/app/videos")
+    if docker_videos_dir.exists():
+        videos_dir = docker_videos_dir
+
 os.makedirs(videos_dir, exist_ok=True)
+print(f"[MAIN] Mounting videos directory: {videos_dir}")
 app.mount("/api/videos", StaticFiles(directory=str(videos_dir)), name="videos")
 
 app.include_router(upload.router, prefix="/api", tags=["upload"])
