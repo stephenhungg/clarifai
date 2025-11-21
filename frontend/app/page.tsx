@@ -102,7 +102,7 @@ export default function Home() {
             className="text-center space-y-6"
           >
             <p className="text-sm uppercase tracking-[0.4em] text-text-tertiary">ClarifAI Studio</p>
-            <h1 className="text-[clamp(2.75rem,6vw,4.75rem)] font-light leading-tight tracking-[-0.04em]">
+            <h1 className="text-[clamp(2rem,4.5vw,3.5rem)] font-light leading-tight tracking-[-0.04em]">
               AI-powered research assistant for <span className="text-white">research intuition</span>.
             </h1>
             <p className="text-text-secondary text-lg">
