@@ -488,80 +488,13 @@ export default function PaperDetailPage() {
     }
   };
 
-  const renderSceneGuide = (video: VideoModalData | null, variant: 'inline' | 'modal' = 'inline') => {
-    if (!video?.captions || video.captions.length === 0) {
-      return (
-        <div className="flex-1 flex items-center justify-center text-center">
-          <p className="text-xs text-text-tertiary">
-            Scene captions will appear once this concept has completed at least one video pass.
-          </p>
-        </div>
-      );
-    }
-
-    const completed = video.captions.filter((caption) => caption.rendered !== false);
-    const skipped = video.captions.filter((caption) => caption.rendered === false);
-
-    const captionCardClass =
-      'rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2 backdrop-blur-xl';
-
-    const sectionLabelClass =
-      'text-[11px] font-semibold uppercase tracking-wide text-text-tertiary mb-2';
-
-    return (
-      <div className="space-y-4">
-        {completed.length > 0 && (
-          <div>
-            <p className={sectionLabelClass}>Scenes in video</p>
-            <div className="space-y-3">
-              {completed.map((caption, index) => (
-                <div key={`rendered-${caption.clip}-${index}`} className={captionCardClass}>
-                  <div className="flex items-center justify-between text-xs text-text-tertiary">
-                    <span className="font-medium text-text-secondary">Scene {caption.clip}</span>
-                    <span className="text-[11px] text-text-tertiary uppercase">
-                      In Final Cut
-                    </span>
-                  </div>
-                  <p className="text-sm text-text-primary leading-relaxed">{caption.text}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {skipped.length > 0 && (
-          <div>
-            <p className={sectionLabelClass}>
-              Skipped {variant === 'inline' ? '(agent could not render)' : '(not rendered)'}
-            </p>
-            <div className="space-y-2">
-              {skipped.map((caption, index) => (
-                <div
-                  key={`skipped-${caption.clip}-${index}`}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-xl"
-                >
-                  <div className="flex items-center justify-between text-xs uppercase text-text-tertiary">
-                    <span>Scene {caption.clip}</span>
-                    <span className="text-accent-error font-semibold tracking-wide">
-                      Not in final cut
-                    </span>
-                  </div>
-                  <p className="text-sm text-text-tertiary mt-1">{caption.text}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   if (!paperId) {
     return (
-      <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+      <div className="min-h-screen bg-bg-primary">
         <Navigation />
-        <main className="pt-32 px-6">
+        <main className="pt-24 px-6">
           <div className="flex items-center justify-center py-16">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/15 border-t-white" />
+            <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
           </div>
         </main>
       </div>
