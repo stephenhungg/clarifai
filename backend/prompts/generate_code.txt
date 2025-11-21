@@ -21,6 +21,8 @@ Your mission is to produce a short, cinematic-quality animation that is both unf
 3.  Ensure plenty of breathing room between visual elements; avoid stacking labels directly on top of shapes.
 4.  Use high-contrast colors (neon accents on black) so elements pop clearly against the dark background.
 
+{cheat_sheet}
+
 --- STRICT TECHNICAL REQUIREMENTS ---
 1.  **Focused & Concise:** The animation must be STRICTLY bounded to the description. Do not introduce extraneous concepts.
 2.  **Code Only:** Your response MUST be only raw Python code for Manim Community v0.18.1.

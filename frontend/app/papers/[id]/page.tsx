@@ -30,7 +30,11 @@ function fixAbstractSpacing(text: string): string {
   return fixed;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.host}`
+    : 'http://localhost:8000');
 
 type VideoModalData = {
   id: string;
@@ -459,7 +463,7 @@ export default function PaperDetailPage() {
     const skipped = video.captions.filter((caption) => caption.rendered === false);
 
     const captionCardClass =
-      'rounded-lg border border-accent-border bg-bg-primary/50 p-3 space-y-2';
+      'rounded-2xl border border-white/10 bg-white/5 p-3 space-y-2 backdrop-blur-xl';
 
     const sectionLabelClass =
       'text-[11px] font-semibold uppercase tracking-wide text-text-tertiary mb-2';
@@ -493,7 +497,7 @@ export default function PaperDetailPage() {
               {skipped.map((caption, index) => (
                 <div
                   key={`skipped-${caption.clip}-${index}`}
-                  className="rounded-lg border border-accent-border/60 bg-bg-secondary/50 p-3"
+                  className="rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-xl"
                 >
                   <div className="flex items-center justify-between text-xs uppercase text-text-tertiary">
                     <span>Scene {caption.clip}</span>
@@ -513,11 +517,11 @@ export default function PaperDetailPage() {
 
   if (!paperId) {
     return (
-      <div className="min-h-screen bg-bg-primary">
+      <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
         <Navigation />
-        <main className="pt-24 px-6">
+        <main className="pt-32 px-6">
           <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/15 border-t-white" />
           </div>
         </main>
       </div>
@@ -526,12 +530,12 @@ export default function PaperDetailPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-bg-primary">
+      <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
         <Navigation />
-        <main className="pt-24 px-6">
-          <div className="max-w-7xl mx-auto text-center py-16">
+        <main className="pt-32 px-6">
+          <div className="mx-auto max-w-4xl text-center py-16 space-y-4">
             <p className="text-accent-error">{error}</p>
-            <button onClick={() => router.push('/papers')} className="btn-secondary mt-4">
+            <button onClick={() => router.push('/papers')} className="btn-secondary">
               Back to Papers
             </button>
           </div>
@@ -542,11 +546,17 @@ export default function PaperDetailPage() {
 
   if (!paper) {
     return (
-      <div className="min-h-screen bg-bg-primary">
+      <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-32 right-0 h-[24rem] w-[24rem] rounded-full bg-white/8 blur-[140px] opacity-50" />
+        </div>
         <Navigation />
-        <main className="pt-24 px-6">
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+        <main className="relative z-10 pt-32 px-6">
+          <div className="mx-auto flex max-w-4xl items-center justify-center py-20">
+            <div className="glass-panel px-10 py-12 text-center">
+              <div className="mx-auto mb-6 h-12 w-12 animate-spin rounded-full border-4 border-white/15 border-t-white" />
+              <p className="text-text-secondary">Loading paper insights…</p>
+            </div>
           </div>
         </main>
       </div>
@@ -554,11 +564,18 @@ export default function PaperDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary">
+    <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-32 left-0 h-[28rem] w-[28rem] rounded-full bg-white/10 blur-[150px] opacity-45 animate-float" />
+        <div
+          className="absolute -bottom-40 right-0 h-[32rem] w-[32rem] rounded-full bg-white/6 blur-[200px] opacity-35 animate-float"
+          style={{ animationDelay: '1.4s' }}
+        />
+      </div>
       <Navigation />
 
-      <main className="pt-20 pb-16 px-6">
-        <div className="max-w-7xl mx-auto">
+      <main className="relative z-10 pt-28 pb-20 px-6">
+        <div className="mx-auto max-w-7xl">
           {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -568,15 +585,15 @@ export default function PaperDetailPage() {
           >
             <button
               onClick={() => router.push('/papers')}
-              className="flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-4"
+              className="btn-secondary mb-4 flex items-center gap-2 text-xs"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
+              <span>Library</span>
             </button>
 
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start justify-between gap-6">
               <div>
-                <h1 className="text-3xl font-bold mb-2">
+                <h1 className="mb-2 text-[clamp(2rem,3vw,3.5rem)] font-light leading-tight tracking-[-0.03em]">
                   {paper.title || paper.filename}
                 </h1>
                 {paper.authors && paper.authors.length > 0 && (
@@ -592,14 +609,14 @@ export default function PaperDetailPage() {
                       <span>Analyzing...</span>
                     </>
                   )}
-                  {paper.status === 'uploaded' && (
-                    <button
-                      onClick={handleAnalyze}
-                      disabled={isAnalyzing}
-                      className="btn-primary"
-                    >
+              {paper.status === 'uploaded' && (
+                <button
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing}
+                  className="btn-primary"
+                >
                       {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
-                    </button>
+                </button>
                   )}
                 </div>
               )}
@@ -623,96 +640,98 @@ export default function PaperDetailPage() {
             {/* Right Side - Stacked Grid */}
             <div className="lg:col-span-1 grid grid-rows-2 gap-6">
               {/* Concepts List - Top Right */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
                 className="overflow-hidden"
-              >
+            >
                 <div className="card h-full flex flex-col">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold">Concepts</h2>
-                    <StatusBadge status={paper.status} size="sm" />
-                  </div>
+                  <h2 className="text-xl font-semibold">Concepts</h2>
+                  <StatusBadge status={paper.status} size="sm" />
+                </div>
 
-                  {paper.status === 'analyzing' && (
+                {paper.status === 'analyzing' && (
                     <div className="flex-1 flex items-center justify-center">
                       <div className="text-center">
-                        <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin mx-auto mb-4" />
+                    <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin mx-auto mb-4" />
                         <p className="text-text-secondary font-medium mb-2">{analysisMessage}</p>
                         <p className="text-text-tertiary text-sm">This may take a minute...</p>
                       </div>
-                    </div>
-                  )}
+                  </div>
+                )}
 
-                  {paper.status === 'analyzed' && concepts.length === 0 && (
+                {paper.status === 'analyzed' && concepts.length === 0 && (
                     <div className="flex-1 flex items-center justify-center">
-                      <p className="text-text-secondary">No concepts found</p>
-                    </div>
-                  )}
+                    <p className="text-text-secondary">No concepts found</p>
+                  </div>
+                )}
 
                   <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                    {concepts.map((concept, index) => (
-                      <motion.div
-                        key={concept.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, delay: index * 0.05 }}
-                        className="card card-hover cursor-pointer"
-                        onClick={() => router.push(`/papers/${paperId}/concepts/${concept.id}`)}
-                      >
-                        <div className="mb-2">
+                  {concepts.map((concept, index) => (
+                    <motion.div
+                      key={concept.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: index * 0.05 }}
+                      className="card card-hover cursor-pointer"
+                      onClick={() => router.push(`/papers/${paperId}/concepts/${concept.id}`)}
+                    >
+                      <div className="mb-2">
                           <h3 className="font-semibold mb-1 text-sm">{concept.name}</h3>
                           <div className="flex items-center gap-2 text-xs text-text-tertiary">
-                            <span className="px-2 py-0.5 bg-bg-hover rounded">{concept.type}</span>
+                            <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5">
+                              {concept.type}
+                            </span>
                             <span>• {Math.round(concept.importance_score * 100)}/100</span>
-                          </div>
                         </div>
+                      </div>
 
                         <p className="text-xs text-text-secondary line-clamp-2 mb-2">
-                          {concept.description}
-                        </p>
+                        {concept.description}
+                      </p>
 
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                             handleConceptVideoAction(concept);
-                          }}
-                          disabled={concept.video_status === 'generating'}
+                        }}
+                        disabled={concept.video_status === 'generating'}
                           className={`w-full text-xs py-1.5 px-2 rounded-md transition-colors ${
-                            concept.video_status === 'ready'
-                              ? 'bg-accent-success/10 text-accent-success border border-accent-success/30'
-                              : 'bg-bg-hover text-text-secondary border border-accent-border hover:border-text-primary'
-                          }`}
-                        >
-                          {concept.video_status === 'ready'
+                          concept.video_status === 'ready'
+                            ? 'bg-accent-success/10 text-accent-success border border-accent-success/30'
+                              : 'bg-white/5 text-text-secondary border border-white/15 hover:border-white/30'
+                        }`}
+                      >
+                        {concept.video_status === 'ready'
                             ? '✓ Watch Video'
-                            : concept.video_status === 'generating'
-                            ? 'Generating...'
-                            : 'Generate Video'}
-                        </button>
-                      </motion.div>
-                    ))}
-                  </div>
+                          : concept.video_status === 'generating'
+                          ? 'Generating...'
+                          : 'Generate Video'}
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
 
-                  {paper.status === 'analyzed' && (
-                    <button
-                      onClick={handleGenerateConcept}
-                      disabled={isGeneratingConcept}
+                {paper.status === 'analyzed' && (
+                  <button
+                    onClick={handleGenerateConcept}
+                    disabled={isGeneratingConcept}
                       className="w-full btn-secondary flex items-center justify-center gap-2 text-sm py-2 mt-4"
-                    >
-                      <Plus className="w-4 h-4" />
-                      {isGeneratingConcept ? 'Generating...' : 'Generate Concept'}
-                    </button>
-                  )}
+                  >
+                    <Plus className="w-4 h-4" />
+                    {isGeneratingConcept ? 'Generating...' : 'Generate Concept'}
+                  </button>
+                )}
 
                   {/* Video Generation Logs */}
                   {generatingConceptId && videoLogs.length > 0 && (
-                    <div className="mt-4 border-t border-accent-border pt-4">
+                    <div className="mt-4 border-t border-white/10 pt-4">
                       <h3 className="text-sm font-semibold mb-2 text-text-secondary">
                         Video Generation Logs
                       </h3>
-                      <div className="bg-bg-secondary rounded-md p-3 max-h-40 overflow-y-auto text-xs font-mono">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 max-h-40 overflow-y-auto text-xs font-mono backdrop-blur-xl">
                         {videoLogs.map((log, index) => (
                           <div key={index} className="text-text-tertiary mb-1">
                             {log}
@@ -721,15 +740,15 @@ export default function PaperDetailPage() {
                         <div ref={logsEndRef} />
                       </div>
                     </div>
-                  )}
-                </div>
-              </motion.div>
+                )}
+              </div>
+            </motion.div>
 
               {/* Chat Section - Bottom Right */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: 0.3 }}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
                 className="overflow-hidden"
               >
                 <div className="card flex flex-col h-full">
@@ -754,7 +773,7 @@ export default function PaperDetailPage() {
                           className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-xs ${
                             message.role === 'user'
                               ? 'bg-text-primary text-bg-primary'
-                              : 'bg-bg-hover text-text-secondary'
+              : 'border border-white/10 bg-white/10 text-text-secondary backdrop-blur-xl'
                           }`}
                         >
                           <p className="leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
@@ -767,7 +786,7 @@ export default function PaperDetailPage() {
                         animate={{ opacity: 1 }}
                         className="flex justify-start"
                       >
-                        <div className="bg-bg-hover rounded-lg px-2.5 py-1.5 text-xs">
+        <div className="rounded-lg border border-white/10 bg-white/10 px-2.5 py-1.5 text-xs backdrop-blur-xl">
                           <div className="flex items-center gap-2 text-text-secondary">
                             <div className="w-2.5 h-2.5 border-2 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
                             <span>Thinking...</span>
@@ -787,7 +806,7 @@ export default function PaperDetailPage() {
                         onChange={(e) => setQuestion(e.target.value)}
                         placeholder="Ask about this paper..."
                         disabled={isAsking}
-                        className="flex-1 bg-bg-secondary border border-accent-border rounded-md px-2.5 py-1.5 text-xs text-text-primary placeholder-text-tertiary focus:outline-none focus:border-text-primary transition-colors"
+                        className="flex-1 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-white/25 transition"
                       />
                       <button
                         type="submit"
@@ -802,13 +821,13 @@ export default function PaperDetailPage() {
               </motion.div>
             </div>
           </div>
-        </div>
+                    </div>
 
         {/* Video Preview Section */}
-        <motion.div
+                    <motion.div
           ref={videoPanelRef}
           initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+                      animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}
           id="video-preview"
           className="mt-6"
@@ -838,7 +857,7 @@ export default function PaperDetailPage() {
 
             {currentVideo ? (
               <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                <div className="bg-black rounded-xl overflow-hidden border border-accent-border">
+                <div className="rounded-xl border border-white/10 bg-black overflow-hidden">
                   <video
                     key={`${currentVideo.id}-${currentVideo.url}`}
                     controls
@@ -847,7 +866,7 @@ export default function PaperDetailPage() {
                     src={currentVideo.url}
                   />
                 </div>
-                <div className="bg-bg-secondary rounded-xl border border-accent-border p-4 flex flex-col">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 flex flex-col backdrop-blur-xl">
                   <div className="mb-3">
                     <p className="text-sm font-semibold text-text-primary">Scene Guide</p>
                     <p className="text-xs text-text-tertiary">
@@ -879,12 +898,12 @@ export default function PaperDetailPage() {
                 )}
               </div>
             )}
-          </div>
-        </motion.div>
+              </div>
+            </motion.div>
       </main>
       {selectedVideo ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4 py-6">
-          <div className="relative w-full max-w-6xl h-[90vh] bg-bg-primary rounded-2xl shadow-2xl border border-accent-border p-6 flex flex-col overflow-hidden">
+          <div className="relative flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#050505] p-6 shadow-2xl">
             <button
               onClick={() => setSelectedVideo(null)}
               className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors"
@@ -898,7 +917,7 @@ export default function PaperDetailPage() {
                 <h3 className="text-lg font-semibold text-text-primary">{selectedVideo.name}</h3>
               </div>
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] flex-1 min-h-0">
-                <div className="bg-black rounded-xl overflow-hidden border border-accent-border flex flex-col">
+                <div className="flex flex-col rounded-xl border border-white/10 bg-black overflow-hidden">
                   <video
                     key={selectedVideo.url}
                     controls
@@ -907,7 +926,7 @@ export default function PaperDetailPage() {
                     src={selectedVideo.url}
                   />
                 </div>
-                <div className="bg-bg-secondary rounded-xl border border-accent-border p-4 flex flex-col min-h-0">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 flex flex-col min-h-0 backdrop-blur-xl">
                   <div className="mb-3">
                     <p className="text-sm font-semibold text-text-primary">Scene Guide</p>
                     <p className="text-xs text-text-tertiary">

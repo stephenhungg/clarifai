@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     libcairo2-dev \
     libpango1.0-dev \
     python3-dev \
+    texlive \
+    texlive-latex-extra \
+    texlive-fonts-recommended \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

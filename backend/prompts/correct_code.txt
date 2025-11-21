@@ -15,6 +15,8 @@ You are a Manim animation expert. The Manim code you previously generated FAILED
     *   Keep the scene clean: limit to two text blocks at a time, fade out older text before adding new labels, and space elements so nothing overlaps.
     *   Use high-contrast colors so visuals remain legible on the black background.
 
+{cheat_sheet}
+
 --- FAILED CODE ---
 {code}
 --- END FAILED CODE ---

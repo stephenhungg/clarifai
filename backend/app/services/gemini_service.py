@@ -544,7 +544,7 @@ JSON:"""
                         
                         # Generate summary separately with more content
                         summary = await self.generate_paper_summary(content, title)
-                        
+
                         return {
                             "title": title,
                             "authors": authors,

@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Upload, FileText } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { Navigation } from './components/navigation';
 import { uploadPaper } from './lib/api';
 
@@ -66,68 +66,74 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary">
+    <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-56 right-0 h-[32rem] w-[32rem] rounded-full bg-white/10 blur-[140px] opacity-60 animate-float" />
+        <div
+          className="absolute bottom-0 left-[-10rem] h-[28rem] w-[28rem] rounded-full bg-white/5 blur-[160px] opacity-50 animate-float"
+          style={{ animationDelay: '2s' }}
+        />
+      </div>
       <Navigation />
 
-      <main className="pt-24 pb-16 px-6">
-        <div className="max-w-4xl mx-auto">
-          {/* Hero Section */}
+      <main className="relative z-10 pt-32 pb-20 px-6">
+        <div className="mx-auto max-w-4xl space-y-16">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="text-center mb-16"
+            transition={{ duration: 0.6, ease: [0.19, 1, 0.22, 1] }}
+            className="text-center space-y-6"
           >
-            <h1 className="text-5xl font-bold mb-4 tracking-tight">
-              Upload Research Paper
+            <p className="text-sm uppercase tracking-[0.4em] text-text-tertiary">ClarifAI Studio</p>
+            <h1 className="text-[clamp(2.75rem,6vw,4.75rem)] font-light leading-tight tracking-[-0.04em]">
+              Liquid glass interface for <span className="text-white">research intuition</span>.
             </h1>
             <p className="text-text-secondary text-lg">
-              Analyze • Visualize • Understand
+              Upload a paper, let agents distill it into concepts, videos, and living notebooks.
             </p>
           </motion.div>
 
-          {/* Upload Zone */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
+            transition={{ duration: 0.6, delay: 0.15, ease: [0.19, 1, 0.22, 1] }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`relative border-2 border-dashed rounded-lg p-16 transition-all duration-200 ${
-              isDragging
-                ? 'border-text-primary bg-bg-hover scale-[0.98]'
-                : 'border-accent-border bg-bg-secondary'
-            } ${isUploading ? 'pointer-events-none opacity-50' : 'cursor-pointer hover:border-text-tertiary'}`}
+            className={`group relative glass-panel p-14 transition-all duration-300 ${
+              isDragging ? 'ring-2 ring-white/40 scale-[0.99]' : 'hover:ring-2 hover:ring-white/15'
+            } ${isUploading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}
           >
+            <div className="pointer-events-none absolute inset-0 rounded-[26px] bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-60" />
             <input
               type="file"
               accept="application/pdf"
               onChange={handleFileSelect}
               disabled={isUploading}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              className="absolute inset-0 z-10 h-full w-full opacity-0 cursor-pointer"
             />
 
-            <div className="flex flex-col items-center gap-6">
+            <div className="relative z-20 flex flex-col items-center gap-6 text-center">
               <motion.div
-                animate={isDragging ? { scale: 1.1 } : { scale: 1 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                animate={isDragging ? { scale: 1.12 } : { scale: 1 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+                className="rounded-full border border-white/10 bg-white/5 p-6 backdrop-blur-xl shadow-inner-glow"
               >
                 {isUploading ? (
-                  <div className="w-16 h-16 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+                  <div className="h-16 w-16 animate-spin rounded-full border-4 border-white/15 border-t-white" />
                 ) : (
-                  <Upload className="w-16 h-16 text-text-tertiary" />
+                  <Upload className="h-16 w-16 text-white/70" />
                 )}
               </motion.div>
 
-              <div className="text-center">
-                <p className="text-xl font-medium mb-2">
-                  {isUploading ? 'Uploading...' : 'Drop PDF or Click'}
+              <div>
+                <p className="text-2xl font-light tracking-tight">
+                  {isUploading ? 'Uploading...' : 'Drop your PDF or click to browse'}
                 </p>
-                <p className="text-text-secondary text-sm">
+                <p className="text-text-secondary mt-2">
                   {isUploading
-                    ? 'Processing your research paper'
-                    : 'Drag and drop or click to upload a research paper'}
+                    ? 'Parsing, segmenting, and preparing your research artifact.'
+                    : 'Drag-and-drop or tap to begin. We support comprehensive research PDFs.'}
                 </p>
               </div>
 
@@ -135,43 +141,41 @@ export default function Home() {
                 <motion.p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-accent-error text-sm"
+                  className="rounded-full border border-accent-error/30 bg-accent-error/10 px-4 py-1 text-sm text-accent-error"
                 >
                   {error}
                 </motion.p>
               )}
             </div>
 
-            {/* Progress Bar */}
             {isUploading && (
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: '100%' }}
-                transition={{ duration: 2, ease: 'easeOut' }}
-                className="absolute bottom-0 left-0 h-1 bg-text-primary"
+                transition={{ duration: 2, ease: 'easeOut', repeat: Infinity }}
+                className="absolute bottom-0 left-0 h-1 rounded-full bg-gradient-to-r from-white/0 via-white to-white/0"
               />
             )}
           </motion.div>
 
-          {/* Info Section */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3, ease: [0.19, 1, 0.22, 1] }}
+            className="grid gap-6 md:grid-cols-3"
           >
             {[
               {
-                title: 'Extract Concepts',
-                description: 'AI identifies key technical concepts',
+                title: 'Concept distillation',
+                description: 'LLM agents surface the core mechanisms and claims.',
               },
               {
-                title: 'Generate Videos',
-                description: '3Blue1Brown-style animations',
+                title: 'Video synthesis',
+                description: 'Glass panels render monochrome animations with live logs.',
               },
               {
-                title: 'Code Examples',
-                description: 'Runnable Python implementations',
+                title: 'Code sketches',
+                description: 'Pull runnable Python snippets aligned to each concept.',
               },
             ].map((feature, index) => (
               <motion.div
@@ -179,9 +183,12 @@ export default function Home() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.4 + index * 0.1 }}
-                className="card text-center"
+                className="card card-hover text-left"
               >
-                <h3 className="font-semibold mb-2">{feature.title}</h3>
+                <p className="text-sm uppercase tracking-[0.3em] text-text-tertiary mb-3">
+                  {String(index + 1).padStart(2, '0')}
+                </p>
+                <h3 className="text-xl font-light mb-2">{feature.title}</h3>
                 <p className="text-text-secondary text-sm">{feature.description}</p>
               </motion.div>
             ))}

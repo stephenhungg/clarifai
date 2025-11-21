@@ -1,48 +1,94 @@
+@import url('https://fonts.cdnfonts.com/css/geist');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+
   * {
-    @apply border-accent-border;
+    @apply border-transparent antialiased;
   }
 
   body {
-    @apply bg-bg-primary text-text-primary;
+    @apply bg-bg-primary text-text-primary font-sans font-light;
+    letter-spacing: -0.015em;
+    background:
+      radial-gradient(60% 60% at 20% 20%, rgba(255, 255, 255, 0.12), transparent),
+      radial-gradient(45% 45% at 80% 0%, rgba(255, 255, 255, 0.08), transparent),
+      #020202;
+    min-height: 100vh;
   }
 
-  /* Scrollbar styling */
+  ::selection {
+    background: rgba(255, 255, 255, 0.25);
+    color: #020202;
+  }
+
   ::-webkit-scrollbar {
     @apply w-2 h-2;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-bg-secondary;
+    @apply bg-transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-accent-border rounded-full;
+    @apply bg-white/25 rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-text-tertiary;
+    @apply bg-white/50;
   }
 }
 
 @layer components {
   .card {
-    @apply bg-bg-tertiary border border-accent-border rounded-lg p-6;
+    @apply relative overflow-hidden rounded-3xl p-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-glow;
+  }
+
+  .card::after {
+    content: '';
+    position: absolute;
+    inset: -120% 0 0 0;
+    background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+    opacity: 0;
+    transform: translateX(-50%);
   }
 
   .card-hover {
-    @apply transition-all duration-200 hover:bg-bg-hover hover:border-text-primary hover:-translate-y-0.5;
+    @apply transition-transform duration-300;
+  }
+
+  .card-hover:hover {
+    @apply -translate-y-1 shadow-[0_40px_120px_rgba(0,0,0,0.65)];
+  }
+
+  .card-hover:hover::after {
+    animation: shine 2s linear forwards;
+    opacity: 0.8;
+  }
+
+  .glass-panel {
+    @apply border border-white/10 bg-white/5 backdrop-blur-2xl shadow-glow rounded-[26px];
   }
 
   .btn-primary {
-    @apply bg-text-primary text-bg-primary px-4 py-2 rounded-md font-medium hover:bg-text-secondary transition-colors;
+    @apply inline-flex items-center justify-center rounded-full px-6 py-3 bg-white text-black font-medium tracking-wide transition-all duration-300 shadow-[0_20px_45px_rgba(255,255,255,0.25)];
+  }
+
+  .btn-primary:hover {
+    @apply shadow-[0_30px_80px_rgba(255,255,255,0.35)] -translate-y-0.5;
   }
 
   .btn-secondary {
-    @apply bg-bg-tertiary border border-accent-border px-4 py-2 rounded-md font-medium hover:border-text-primary transition-colors;
+    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 border border-white/20 bg-white/5 text-text-primary backdrop-blur-xl transition-all duration-300;
+  }
+
+  .btn-secondary:hover {
+    @apply border-white/40 bg-white/10 -translate-y-0.5;
   }
 }

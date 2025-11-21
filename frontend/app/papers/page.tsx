@@ -84,77 +84,84 @@ export default function PapersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary">
+    <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-40 left-0 h-[28rem] w-[28rem] rounded-full bg-white/10 blur-[140px] opacity-45 animate-float" />
+        <div
+          className="absolute -bottom-32 right-0 h-[32rem] w-[32rem] rounded-full bg-white/5 blur-[180px] opacity-40 animate-float"
+          style={{ animationDelay: '1.2s' }}
+        />
+      </div>
+
       <Navigation />
 
-      <main className="pt-24 pb-16 px-6">
-        <div className="max-w-6xl mx-auto">
-          {/* Header */}
+      <main className="relative z-10 pt-32 pb-20 px-6">
+        <div className="mx-auto max-w-6xl space-y-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="mb-8"
+            className="space-y-3"
           >
-            <h1 className="text-4xl font-bold mb-2">Papers</h1>
-            <p className="text-text-secondary">Your research paper library</p>
+            <p className="text-sm uppercase tracking-[0.4em] text-text-tertiary">Library</p>
+            <h1 className="text-[clamp(2rem,4vw,3.5rem)] font-light leading-tight tracking-[-0.03em]">
+              Monochrome archive of your analyzed papers.
+            </h1>
+            <p className="text-text-secondary">
+              Search, revisit, and relaunch concept extraction or video generation.
+            </p>
           </motion.div>
 
-          {/* Search Bar */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="mb-8"
+            className="relative"
           >
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-text-tertiary" />
-              <input
-                type="text"
-                placeholder="Search papers by title or author..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-bg-secondary border border-accent-border rounded-lg pl-12 pr-4 py-3 text-text-primary placeholder-text-tertiary focus:outline-none focus:border-text-primary transition-colors"
-              />
-            </div>
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-text-tertiary" />
+            <input
+              type="text"
+              placeholder="Search by title or author"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-2xl border border-white/15 bg-white/5 pl-14 pr-4 py-3 text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-white/20 backdrop-blur-xl transition"
+            />
           </motion.div>
 
-          {/* Error Message */}
           {error && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mb-6 p-4 bg-accent-error/10 border border-accent-error/30 rounded-lg text-accent-error"
+              className="rounded-2xl border border-accent-error/40 bg-accent-error/10 px-4 py-3 text-accent-error backdrop-blur-xl"
             >
               {error}
             </motion.div>
           )}
 
-          {/* Papers List */}
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/15 border-t-white" />
             </div>
           ) : filteredPapers.length === 0 ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.3 }}
-              className="text-center py-16"
+              className="glass-panel text-center py-12"
             >
-              <FileText className="w-16 h-16 text-text-tertiary mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No papers yet</h3>
+              <FileText className="mx-auto mb-4 h-16 w-16 text-text-tertiary" />
+              <h3 className="text-2xl font-light mb-2">Nothing here yet</h3>
               <p className="text-text-secondary mb-6">
-                {searchQuery ? 'No papers match your search.' : 'Upload your first research paper to get started.'}
+                {searchQuery ? 'No papers match your query.' : 'Upload a paper to start your collection.'}
               </p>
               {!searchQuery && (
-                <Link href="/" className="btn-primary inline-block">
+                <Link href="/" className="btn-primary inline-flex">
                   Upload Paper
                 </Link>
               )}
             </motion.div>
           ) : (
-            <div className="grid gap-4">
+            <div className="space-y-4">
               {filteredPapers.map((paper, index) => (
                 <motion.div
                   key={paper.id}
@@ -163,41 +170,36 @@ export default function PapersPage() {
                   transition={{ duration: 0.3, delay: index * 0.05 }}
                 >
                   <Link href={`/papers/${paper.id}`}>
-                    <div className="card card-hover cursor-pointer">
-                      <div className="flex items-start justify-between gap-4">
+                    <div className="card card-hover cursor-pointer p-6">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h2 className="text-xl font-semibold">
+                          <div className="flex flex-wrap items-center gap-3 mb-2">
+                            <h2 className="text-2xl font-light tracking-tight">
                               {paper.title || 'Untitled Paper'}
                             </h2>
                             <StatusBadge status={paper.status} size="sm" />
                           </div>
-
                           {paper.authors && paper.authors.length > 0 && (
-                            <p className="text-text-secondary text-sm mb-3">
+                            <p className="text-text-secondary text-sm mb-4">
                               {paper.authors.join(', ')}
                             </p>
                           )}
-
-                          <div className="flex items-center gap-6 text-sm text-text-tertiary">
+                          <div className="flex flex-wrap items-center gap-6 text-sm text-text-tertiary">
                             <div className="flex items-center gap-2">
-                              <Clock className="w-4 h-4" />
+                              <Clock className="h-4 w-4" />
                               <span>{formatDate(paper.uploaded_at)}</span>
                             </div>
-
                             {paper.concept_count !== undefined && (
                               <span>{paper.concept_count} concepts</span>
                             )}
-
                             {paper.video_count !== undefined && (
                               <span>{paper.video_count} videos</span>
                             )}
                           </div>
                         </div>
-
                         <div className="text-text-tertiary">
                           <svg
-                            className="w-6 h-6"
+                            className="h-6 w-6"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"

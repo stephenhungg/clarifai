@@ -5,6 +5,7 @@ import subprocess
 import time
 import tempfile
 import re
+import shutil
 from pathlib import Path
 import google.genai as genai
 from google.genai import types
@@ -13,6 +14,9 @@ from google.genai import types
 def log(message):
     """Prints a log message to stdout for real-time streaming."""
     print("LOG: " + str(message), flush=True)
+
+
+LATEX_AVAILABLE = shutil.which("latex") is not None
 
 
 def read_prompt_template(filename):
@@ -114,19 +118,101 @@ def get_video_scenes(client, concept_name, concept_description):
     ] or [concept_description]
 
 
-def replace_tex_with_text(code):
-    """Replaces any Tex/MathTex usage with Text to avoid LaTeX dependency."""
-    replaced = False
+def generate_scene_captions(client, concept_name, concept_description, scenes):
+    """Ask Gemini to turn rough scene prompts into viewer-facing captions."""
+    if not scenes:
+        return []
 
-    def _sub(match):
-        nonlocal replaced
-        replaced = True
-        return "Text("
+    numbered_scenes = "\n".join(
+        [f"{idx + 1}. {scene}" for idx, scene in enumerate(scenes)]
+    )
 
-    code = re.sub(r"\b(?:MathTex|Tex)\s*\(", _sub, code)
-    if replaced:
-        log("--- DEBUG: Replaced Tex/MathTex with Text to avoid LaTeX dependency. ---")
-    return code
+    prompt = f"""You are writing on-screen captions for a short educational video about "{concept_name}".
+
+Concept description:
+{concept_description}
+
+Scene breakdown:
+{numbered_scenes}
+
+For each numbered scene, write a concise 1–2 sentence caption describing what appears on screen and why it matters. Captions should be plain text (no markdown) and help the viewer follow along even without narration.
+
+Return ONLY valid JSON in the form:
+[
+  {{"clip": 1, "caption": "…"}},
+  {{"clip": 2, "caption": "…"}},
+  ...
+]
+Make sure clip numbers match the scene order exactly."""
+
+    try:
+        response = call_gemini_with_retries(
+            client,
+            prompt,
+            temperature=0.4,
+            context_label="Scene caption generation",
+        )
+        if response and response.text:
+            json_match = re.search(r"\[.*\]", response.text, re.DOTALL)
+            if json_match:
+                caption_data = json.loads(json_match.group(0))
+                captions = [""] * len(scenes)
+                for item in caption_data:
+                    idx = int(item.get("clip", 0)) - 1
+                    if 0 <= idx < len(scenes):
+                        captions[idx] = item.get("caption", "").strip()
+                # If we captured anything, fill blanks with fallback text
+                if any(captions):
+                    for idx, caption in enumerate(captions):
+                        if not caption:
+                            captions[idx] = scenes[idx]
+                    return captions
+    except Exception as e:
+        log(f"--- WARNING: Scene caption generation failed: {e} ---")
+
+    return scenes
+
+
+def inject_math_shims(code):
+    """Injects safe shims for MathTex and Tex that use Text under the hood."""
+    shim_code = """\
+# --- MATH SHIMS ---
+class MathTex(VGroup):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        # Extract common Text kwargs
+        font_size = kwargs.get("font_size", 48)
+        color = kwargs.get("color", WHITE)
+        
+        # Filter kwargs for Text to avoid errors
+        text_kwargs = {k:v for k,v in kwargs.items() if k in ['font', 'slant', 'weight', 'lsh', 'gradient', 't2c', 't2f', 't2g', 't2s', 't2w', 'disable_ligatures']}
+        text_kwargs['font_size'] = font_size
+        text_kwargs['color'] = color
+        
+        for arg in args:
+            if isinstance(arg, str):
+                # The args are already cleaned of LaTeX commands by normalize_latex_markup
+                self.add(Text(arg, **text_kwargs))
+        
+        # Arrange horizontally like math
+        self.arrange(RIGHT, buff=0.1)
+        
+        # Handle simple positioning kwargs if present (though usually done via methods)
+        if "to_edge" in kwargs:
+             # This is tricky in init, better to rely on caller method chaining
+             pass
+
+class Tex(MathTex):
+    pass
+# ------------------
+"""
+    
+    # Insert after imports
+    if "from manim import *" in code:
+        return code.replace("from manim import *", "from manim import *\n" + shim_code)
+    else:
+        return "from manim import *\n" + shim_code + "\n" + code
+
 
 
 def normalize_latex_markup(code):
@@ -188,6 +274,23 @@ def normalize_latex_markup(code):
     return code
 
 
+def normalize_mobject_accessors(code):
+    """Replaces deprecated geometric helper calls with supported get_corner usage."""
+    replacements = {
+        ".get_bottom_left()": ".get_corner(DL)",
+        ".get_bottom_right()": ".get_corner(DR)",
+        ".get_top_left()": ".get_corner(UL)",
+        ".get_top_right()": ".get_corner(UR)",
+        ".get_center_point()": ".get_center()",
+    }
+    original_code = code
+    for old, new in replacements.items():
+        code = code.replace(old, new)
+    if code != original_code:
+        log("--- DEBUG: Normalized deprecated mobject accessor helpers. ---")
+    return code
+
+
 def ensure_rate_functions_usage(code):
     """Ensures custom easing functions import and usage use rate_functions namespace."""
     needs_import = False
@@ -227,8 +330,14 @@ def sanitize_code(code):
         code = "from manim import *\n\n" + code
         log("--- DEBUG: Added missing 'from manim import *' import. ---")
 
-    code = replace_tex_with_text(code)
-    code = normalize_latex_markup(code)
+    if LATEX_AVAILABLE:
+        log("--- DEBUG: Native LaTeX detected; preserving MathTex usage. ---")
+    else:
+        log("--- WARNING: LaTeX not found. Using Text-based MathTex shim. ---")
+        code = normalize_latex_markup(code)
+        code = inject_math_shims(code)
+
+    code = normalize_mobject_accessors(code)
     code = ensure_rate_functions_usage(code)
 
     return code
@@ -237,7 +346,8 @@ def sanitize_code(code):
 def generate_manim_code(client, description):
     """Generates the initial Manim code for a single scene."""
     template = read_prompt_template("generate_code.txt")
-    prompt = template.format(description=description)
+    cheat_sheet = read_prompt_template("manim_cheat_sheet.txt")
+    prompt = template.format(description=description, cheat_sheet=cheat_sheet)
 
     log("--- PROMPT FOR MANIM CODE ---")
     log(prompt)
@@ -256,7 +366,8 @@ def generate_manim_code(client, description):
 def correct_manim_code(client, code, error):
     """Corrects the Manim code based on an error message."""
     template = read_prompt_template("correct_code.txt")
-    prompt = template.format(code=code, error=error)
+    cheat_sheet = read_prompt_template("manim_cheat_sheet.txt")
+    prompt = template.format(code=code, error=error, cheat_sheet=cheat_sheet)
 
     log("--- PROMPT FOR CODE CORRECTION ---")
     log(prompt)
@@ -357,9 +468,15 @@ def main():
         client = initialize_llm(api_key)
 
         scenes = get_video_scenes(client, concept_name, concept_description)
+        caption_texts = generate_scene_captions(
+            client, concept_name, concept_description, scenes
+        )
+        if len(caption_texts) != len(scenes):
+            caption_texts = scenes
+
         captions = [
-            {"clip": idx + 1, "text": scene_description, "rendered": False}
-            for idx, scene_description in enumerate(scenes)
+            {"clip": idx + 1, "text": caption_texts[idx], "rendered": False}
+            for idx in range(len(scenes))
         ]
         successful_clips = 0
 
