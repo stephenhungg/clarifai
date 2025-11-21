@@ -59,6 +59,14 @@ export default function PaperDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [analysisMessage, setAnalysisMessage] = useState<string>('Starting analysis...');
   const [videoLogs, setVideoLogs] = useState<string[]>([]);
+  const [videoProgress, setVideoProgress] = useState<{
+    current_scene: number;
+    total_scenes: number;
+    stage: string;
+    details: string;
+    progress_percent: number;
+  } | null>(null);
+  const [fakeProgress, setFakeProgress] = useState(0);
   const [generatingConceptId, setGeneratingConceptId] = useState<string | null>(null);
   const [currentVideo, setCurrentVideo] = useState<VideoModalData | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<VideoModalData | null>(null);
@@ -92,6 +100,33 @@ export default function PaperDetailPage() {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [videoLogs]);
+
+  // Fake progress bar that smoothly increases to 99% over ~30 seconds
+  useEffect(() => {
+    if (!generatingConceptId) {
+      setFakeProgress(0);
+      return;
+    }
+
+    const startTime = Date.now();
+    const duration = 30000; // 30 seconds to reach 99%
+    const maxProgress = 99;
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min((elapsed / duration) * maxProgress, maxProgress);
+
+      // Ease out function for smooth deceleration
+      const easedProgress = maxProgress * (1 - Math.pow(1 - progress / maxProgress, 3));
+      setFakeProgress(Math.floor(easedProgress));
+
+      if (progress >= maxProgress) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [generatingConceptId]);
 
   // Poll for status updates when analyzing
   useEffect(() => {
@@ -243,6 +278,8 @@ export default function PaperDetailPage() {
       }
       setGeneratingConceptId(conceptId);
       setVideoLogs([]);
+      setVideoProgress(null);
+      setFakeProgress(0);
       await generateVideo(paperId, conceptId);
       // Update concept status
       setConcepts((prev) =>
@@ -338,6 +375,9 @@ export default function PaperDetailPage() {
         const data = JSON.parse(event.data);
         if (data.type === 'log' && data.message) {
           setVideoLogs((prev) => [...prev, data.message]);
+        } else if (data.type === 'progress' && data.data) {
+          console.log('Progress update:', data.data);
+          setVideoProgress(data.data);
         } else if (data.type === 'connected') {
           console.log('WebSocket connection confirmed:', data.message);
         } else if (data.type === 'keepalive' || data.type === 'pong') {
@@ -725,11 +765,50 @@ export default function PaperDetailPage() {
                   </button>
                 )}
 
+                  {/* Video Generation Progress */}
+                  {generatingConceptId && (
+                    <div className="mt-4 border-t border-white/10 pt-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-text-secondary">
+                          Generating Video
+                        </h3>
+                        <span className="text-xs text-text-tertiary">
+                          {fakeProgress}%
+                        </span>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="relative h-2 bg-white/5 rounded-full overflow-hidden mb-3">
+                        <div
+                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-white/60 to-white/80 transition-all duration-300 ease-out"
+                          style={{ width: `${fakeProgress}%` }}
+                        />
+                      </div>
+
+                      {/* Status Text */}
+                      {videoProgress && (
+                        <div className="text-xs text-text-secondary">
+                          <div className="flex items-center justify-between mb-1">
+                            <span>
+                              {videoProgress.stage === 'splitting' && 'Analyzing concept...'}
+                              {videoProgress.stage === 'generating_code' && 'Generating animation code...'}
+                              {videoProgress.stage === 'rendering' && 'Rendering video...'}
+                              {videoProgress.stage === 'stitching' && 'Finalizing...'}
+                            </span>
+                            <span className="text-text-tertiary">
+                              Scene {videoProgress.current_scene}/{videoProgress.total_scenes}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Video Generation Logs */}
                   {generatingConceptId && videoLogs.length > 0 && (
                     <div className="mt-4 border-t border-white/10 pt-4">
                       <h3 className="text-sm font-semibold mb-2 text-text-secondary">
-                        Video Generation Logs
+                        Detailed Logs
                       </h3>
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-3 max-h-40 overflow-y-auto text-xs font-mono backdrop-blur-xl">
                         {videoLogs.map((log, index) => (

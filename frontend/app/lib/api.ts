@@ -22,6 +22,16 @@ const resolveWsUrl = () => {
 const API_URL = resolveApiUrl();
 const WS_URL = resolveWsUrl();
 
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+
+const getHeaders = (): HeadersInit => {
+  const headers: HeadersInit = {};
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
+  return headers;
+};
+
 export interface Paper {
   id: string;
   filename: string;
@@ -64,6 +74,7 @@ export async function uploadPaper(file: File): Promise<Paper> {
   try {
     const response = await fetch(`${API_URL}/api/upload`, {
       method: 'POST',
+      headers: getHeaders(),
       body: formData,
     });
 
@@ -119,6 +130,7 @@ export async function getPaper(paperId: string): Promise<Paper> {
 export async function deletePaper(paperId: string): Promise<void> {
   const response = await fetch(`${API_URL}/api/papers/${paperId}`, {
     method: 'DELETE',
+    headers: getHeaders(),
   });
 
   if (!response.ok) {
@@ -163,7 +175,10 @@ export async function generateAdditionalConcept(paperId: string): Promise<Concep
 export async function generateVideo(paperId: string, conceptId: string): Promise<void> {
   const response = await fetch(
     `${API_URL}/api/papers/${paperId}/concepts/${conceptId}/generate-video`,
-    { method: 'POST' }
+    {
+      method: 'POST',
+      headers: getHeaders(),
+    }
   );
 
   if (!response.ok) {

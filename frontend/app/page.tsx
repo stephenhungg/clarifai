@@ -188,13 +188,13 @@ export default function Home() {
               },
               {
                 title: 'Video synthesis',
-                description: 'Glass panels render monochrome animations with live logs.',
+                description: 'Render animations with live logs.',
               },
               {
                 title: 'Code sketches',
-                description: 'Pull runnable Python snippets aligned to each concept.',
+                description: 'Generate runnable Python code snippets aligned to each concept.',
               },
-            ].map((feature, index) => (
+            ].map((feature, index) => ( 
               <motion.div
                 key={feature.title}
                 initial={{ opacity: 0, y: 30 }}

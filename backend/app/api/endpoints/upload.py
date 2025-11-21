@@ -7,15 +7,21 @@ import uuid
 import json
 from typing import Dict, Any
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ...core.config import settings
+from ...core.auth import verify_api_key
 from ...models.paper import Paper, PaperResponse, AnalysisStatus, Concept
 from ...services.pdf_parser import PDFParser
 from ...services.gemini_service import GeminiService
 
 router = APIRouter()
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # Persistence file path
 PERSISTENCE_FILE = Path("storage/papers_db.json")
@@ -81,11 +87,17 @@ gemini_service = GeminiService()
 
 
 @router.post("/upload")
+@limiter.limit("5/hour")
 async def upload_pdf(
-    background_tasks: BackgroundTasks, file: UploadFile = File(...)
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    api_key: str = Depends(verify_api_key)
 ) -> Dict[str, Any]:
     """
     Upload PDF file and start processing
+    Rate limit: 5 uploads per hour per IP
+    Requires API key authentication
     """
     # Validate file
     if not file.filename.endswith(".pdf"):

@@ -3,17 +3,23 @@ import asyncio
 import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
 from pydantic import BaseModel
 from pathlib import Path
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ...models.paper import Concept, VideoStatus, ConceptVideo
 from ...core.config import settings
+from ...core.auth import verify_api_key
 from .upload import papers_db, save_papers_to_disk
 
 manager = None
 
 router = APIRouter()
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 
 class GenerateVideoRequest(BaseModel):
@@ -136,6 +142,17 @@ async def run_agent_script(
                         print(f"Log sent successfully")
                     except Exception as e:
                         print(f"Error sending log: {e}")
+            elif decoded_line.startswith("PROGRESS: "):
+                progress_json = decoded_line[10:]
+                print(f"Sending progress via WebSocket: {progress_json}")
+                if manager:
+                    try:
+                        await manager.send_log(
+                            paper_id, json.dumps({"type": "progress", "data": json.loads(progress_json)})
+                        )
+                        print(f"Progress sent successfully")
+                    except Exception as e:
+                        print(f"Error sending progress: {e}")
             elif decoded_line.startswith("CLIP_SUCCESS: "):
                 clip_path = decoded_line[14:]
                 successful_clips.append(clip_path)
@@ -306,11 +323,14 @@ async def stitch_clips_simple(
 
 
 @router.post("/papers/{paper_id}/concepts/{concept_id}/generate-video")
+@limiter.limit("10/hour")
 async def generate_video_for_concept(
+    request: Request,
     paper_id: str,
     concept_id: str,
     background_tasks: BackgroundTasks,
-    request: GenerateVideoRequest = GenerateVideoRequest(),
+    video_request: GenerateVideoRequest = GenerateVideoRequest(),
+    api_key: str = Depends(verify_api_key)
 ) -> Dict[str, str]:
     if paper_id not in papers_db:
         raise HTTPException(status_code=404, detail="Paper not found")

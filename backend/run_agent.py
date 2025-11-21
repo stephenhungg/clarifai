@@ -18,6 +18,18 @@ def log(message):
     print("LOG: " + str(message), flush=True)
 
 
+def send_progress(current_scene, total_scenes, stage, details=""):
+    """Sends progress update to the backend for real-time tracking."""
+    progress = {
+        "current_scene": current_scene,
+        "total_scenes": total_scenes,
+        "stage": stage,  # "splitting" | "generating_code" | "rendering" | "stitching"
+        "details": details,
+        "progress_percent": int((current_scene / max(total_scenes, 1)) * 100)
+    }
+    print("PROGRESS: " + json.dumps(progress), flush=True)
+
+
 LATEX_AVAILABLE = shutil.which("latex") is not None
 
 
@@ -518,7 +530,7 @@ async def asyncify(func, *args):
     return await loop.run_in_executor(executor, func, *args)
 
 
-async def process_single_clip(i, scene_description, client, output_dir, captions):
+async def process_single_clip(i, scene_description, client, output_dir, captions, total_scenes):
     """Process a single clip with retry logic"""
     output_filename = f"clip_{i}.mp4"
 
@@ -530,11 +542,17 @@ async def process_single_clip(i, scene_description, client, output_dir, captions
     for attempt in range(1, 4):
         log(f"[Clip {i+1}] Attempt {attempt}/3")
 
+        # Send progress for code generation
+        send_progress(i + 1, total_scenes, "generating_code", f"Attempt {attempt}/3")
+
         try:
             if code is None:
                 code = await asyncify(generate_manim_code, client, scene_description)
             else:
                 code = await asyncify(correct_manim_code, client, code, error)
+
+            # Send progress for rendering
+            send_progress(i + 1, total_scenes, "rendering", f"Attempt {attempt}/3")
 
             video_path, error = await asyncify(render_manim_code, code, output_dir, output_filename)
 
@@ -570,7 +588,7 @@ async def process_clips_in_batches(scenes, client, output_dir, captions, batch_s
 
         # Create tasks for this batch
         batch_tasks = [
-            process_single_clip(batch_start + j, scene, client, output_dir, captions)
+            process_single_clip(batch_start + j, scene, client, output_dir, captions, total_scenes)
             for j, scene in enumerate(batch)
         ]
 
@@ -610,10 +628,12 @@ async def async_main():
         client = initialize_llm(api_key)
 
         log("=== Step 1: Splitting concept into scenes ===")
+        send_progress(0, 1, "splitting", "Analyzing concept structure")
         scenes = get_video_scenes(client, concept_name, concept_description)
         log(f"--- Split into {len(scenes)} scenes ---")
 
         log("=== Step 2: Generating captions ===")
+        send_progress(0, len(scenes), "splitting", "Generating captions")
         caption_texts = generate_scene_captions(
             client, concept_name, concept_description, scenes
         )
@@ -627,6 +647,9 @@ async def async_main():
 
         log("=== Step 3: Generating clips in parallel ===")
         results = await process_clips_in_batches(scenes, client, output_dir, captions, batch_size=3)
+
+        # Final progress update
+        send_progress(len(scenes), len(scenes), "stitching", "Finalizing video")
 
         # Count successes
         successful_clips = sum(1 for r in results if r["success"])
