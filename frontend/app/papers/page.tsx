@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { FileText, Clock, Search } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FileText, Clock, Search, Trash2 } from 'lucide-react';
 import { Navigation } from '../components/navigation';
 import { StatusBadge } from '../components/status-badge';
+import { deletePaper } from '../lib/api';
 
 interface PaperItem {
   id: string;
@@ -22,6 +23,8 @@ export default function PapersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; title: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const loadPapers = async () => {
@@ -83,6 +86,32 @@ export default function PapersPage() {
     });
   };
 
+  const handleDeleteClick = (e: React.MouseEvent, paper: PaperItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteConfirm({ id: paper.id, title: paper.title });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm) return;
+
+    setIsDeleting(true);
+    try {
+      await deletePaper(deleteConfirm.id);
+      setPapers(papers.filter(p => p.id !== deleteConfirm.id));
+      setDeleteConfirm(null);
+    } catch (err) {
+      console.error('Failed to delete paper:', err);
+      setError('Failed to delete paper. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirm(null);
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
       <div className="pointer-events-none absolute inset-0">
@@ -105,7 +134,7 @@ export default function PapersPage() {
           >
             <p className="text-sm uppercase tracking-[0.4em] text-text-tertiary">Library</p>
             <h1 className="text-[clamp(2rem,4vw,3.5rem)] font-light leading-tight tracking-[-0.03em]">
-              Monochrome archive of your analyzed papers.
+              Archive of your analyzed papers.
             </h1>
             <p className="text-text-secondary">
               Search, revisit, and relaunch concept extraction or video generation.
@@ -169,10 +198,10 @@ export default function PapersPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: index * 0.05 }}
                 >
-                  <Link href={`/papers/${paper.id}`}>
-                    <div className="card card-hover cursor-pointer p-6">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="flex-1">
+                  <div className="card card-hover p-6 relative group">
+                    <Link href={`/papers/${paper.id}`} className="block">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-3 mb-2">
                             <h2 className="text-2xl font-light tracking-tight">
                               {paper.title || 'Untitled Paper'}
@@ -197,30 +226,97 @@ export default function PapersPage() {
                             )}
                           </div>
                         </div>
-                        <div className="text-text-tertiary">
-                          <svg
-                            className="h-6 w-6"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
+                        <div className="flex flex-col items-center gap-3 shrink-0">
+                          <div className="text-text-tertiary">
+                            <svg
+                              className="h-6 w-6"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5l7 7-7 7"
+                              />
+                            </svg>
+                          </div>
+                          {/* Delete Button */}
+                          <button
+                            onClick={(e) => handleDeleteClick(e, paper)}
+                            className="p-2 rounded-lg border border-white/10 bg-black/40 text-text-tertiary hover:text-accent-error hover:border-accent-error/40 hover:bg-accent-error/10 transition-all opacity-0 group-hover:opacity-100"
+                            title="Delete paper"
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5l7 7-7 7"
-                            />
-                          </svg>
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
-                    </div>
-                  </Link>
+                    </Link>
+                  </div>
                 </motion.div>
               ))}
             </div>
           )}
         </div>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            onClick={handleDeleteCancel}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass-panel max-w-md w-full p-8 space-y-6"
+            >
+              <div className="flex items-start gap-4">
+                <div className="rounded-full p-3 bg-accent-error/10 border border-accent-error/20">
+                  <Trash2 className="h-6 w-6 text-accent-error" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-light mb-2">Delete Paper?</h3>
+                  <p className="text-text-secondary text-sm">
+                    Are you sure you want to delete <span className="text-white font-medium">"{deleteConfirm.title}"</span>? This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={handleDeleteCancel}
+                  disabled={isDeleting}
+                  className="px-5 py-2.5 rounded-xl border border-white/20 bg-white/5 text-text-primary hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  disabled={isDeleting}
+                  className="px-5 py-2.5 rounded-xl border border-accent-error/40 bg-accent-error/20 text-accent-error hover:bg-accent-error/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent-error/30 border-t-accent-error" />
+                      Deleting...
+                    </>
+                  ) : (
+                    'Delete'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

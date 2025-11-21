@@ -6,6 +6,8 @@ import time
 import tempfile
 import re
 import shutil
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import google.genai as genai
 from google.genai import types
@@ -316,6 +318,64 @@ def ensure_rate_functions_usage(code):
     return code
 
 
+def fix_spacing_issues(code):
+    """
+    Automatically fixes common spacing/overlap issues in generated code.
+    """
+    fixes_applied = []
+
+    # Fix 1: Ensure .next_to() always has buff parameter
+    def ensure_buff_in_next_to(match):
+        full_match = match.group(0)
+        if "buff=" not in full_match:
+            # Insert buff=0.5 before closing paren
+            fixed = full_match.rstrip(")") + ", buff=0.5)"
+            fixes_applied.append("Added buff parameter to .next_to()")
+            return fixed
+        return full_match
+
+    code = re.sub(
+        r"\.next_to\([^)]+\)",
+        ensure_buff_in_next_to,
+        code
+    )
+
+    # Fix 2: Ensure .arrange() always has buff parameter
+    def ensure_buff_in_arrange(match):
+        full_match = match.group(0)
+        if "buff=" not in full_match:
+            fixed = full_match.rstrip(")") + ", buff=0.4)"
+            fixes_applied.append("Added buff parameter to .arrange()")
+            return fixed
+        return full_match
+
+    code = re.sub(
+        r"\.arrange\([^)]+\)",
+        ensure_buff_in_arrange,
+        code
+    )
+
+    # Fix 3: Ensure .to_edge() always has buff parameter
+    def ensure_buff_in_to_edge(match):
+        full_match = match.group(0)
+        if "buff=" not in full_match:
+            fixed = full_match.rstrip(")") + ", buff=0.5)"
+            fixes_applied.append("Added buff parameter to .to_edge()")
+            return fixed
+        return full_match
+
+    code = re.sub(
+        r"\.to_edge\([^)]+\)",
+        ensure_buff_in_to_edge,
+        code
+    )
+
+    if fixes_applied:
+        log(f"--- DEBUG: Applied {len(fixes_applied)} spacing fixes: {', '.join(set(fixes_applied))} ---")
+
+    return code
+
+
 def sanitize_code(code):
     """Aggressively sanitizes the AI's code output."""
     log("--- DEBUG: Sanitizing AI response. ---")
@@ -339,6 +399,7 @@ def sanitize_code(code):
 
     code = normalize_mobject_accessors(code)
     code = ensure_rate_functions_usage(code)
+    code = fix_spacing_issues(code)
 
     return code
 
@@ -448,7 +509,88 @@ def render_manim_code(code, output_dir, file_name):
         os.unlink(temp_file_path)
 
 
-def main():
+# Thread pool for running blocking operations concurrently
+executor = ThreadPoolExecutor(max_workers=5)
+
+async def asyncify(func, *args):
+    """Wrap synchronous functions for async execution in thread pool"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, func, *args)
+
+
+async def process_single_clip(i, scene_description, client, output_dir, captions):
+    """Process a single clip with retry logic"""
+    output_filename = f"clip_{i}.mp4"
+
+    log(f"[Clip {i+1}] Starting generation: {scene_description[:50]}...")
+
+    code = None
+    error = "Initial code generation failed."
+
+    for attempt in range(1, 4):
+        log(f"[Clip {i+1}] Attempt {attempt}/3")
+
+        try:
+            if code is None:
+                code = await asyncify(generate_manim_code, client, scene_description)
+            else:
+                code = await asyncify(correct_manim_code, client, code, error)
+
+            video_path, error = await asyncify(render_manim_code, code, output_dir, output_filename)
+
+            if error is None:
+                log(f"[Clip {i+1}] ✓ Rendered successfully")
+                print(f"CLIP_SUCCESS: {video_path}", flush=True)
+                if i < len(captions):
+                    captions[i]["rendered"] = True
+                return {"success": True, "index": i, "path": video_path}
+
+            log(f"[Clip {i+1}] ✗ Attempt {attempt} failed")
+
+        except Exception as e:
+            log(f"[Clip {i+1}] ERROR in attempt {attempt}: {str(e)}")
+            error = str(e)
+
+    log(f"[Clip {i+1}] FAILED after 3 attempts. Skipping.")
+    return {"success": False, "index": i}
+
+
+async def process_clips_in_batches(scenes, client, output_dir, captions, batch_size=3):
+    """Process clips in batches to avoid overwhelming the system"""
+    all_results = []
+    total_scenes = len(scenes)
+
+    for batch_start in range(0, total_scenes, batch_size):
+        batch_end = min(batch_start + batch_size, total_scenes)
+        batch = scenes[batch_start:batch_end]
+
+        batch_num = (batch_start // batch_size) + 1
+        total_batches = (total_scenes + batch_size - 1) // batch_size
+        log(f"=== Processing Batch {batch_num}/{total_batches} (Clips {batch_start+1}-{batch_end}) ===")
+
+        # Create tasks for this batch
+        batch_tasks = [
+            process_single_clip(batch_start + j, scene, client, output_dir, captions)
+            for j, scene in enumerate(batch)
+        ]
+
+        # Run batch in parallel
+        batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+
+        # Handle any exceptions
+        for i, result in enumerate(batch_results):
+            if isinstance(result, Exception):
+                log(f"[Clip {batch_start+i+1}] Exception during processing: {result}")
+                all_results.append({"success": False, "index": batch_start + i})
+            else:
+                all_results.append(result)
+
+        log(f"=== Batch {batch_num}/{total_batches} complete ===")
+
+    return all_results
+
+
+async def async_main():
     try:
         if len(sys.argv) != 5:
             log("--- FATAL ERROR: Agent requires 4 arguments. ---")
@@ -467,7 +609,11 @@ def main():
 
         client = initialize_llm(api_key)
 
+        log("=== Step 1: Splitting concept into scenes ===")
         scenes = get_video_scenes(client, concept_name, concept_description)
+        log(f"--- Split into {len(scenes)} scenes ---")
+
+        log("=== Step 2: Generating captions ===")
         caption_texts = generate_scene_captions(
             client, concept_name, concept_description, scenes
         )
@@ -478,54 +624,13 @@ def main():
             {"clip": idx + 1, "text": caption_texts[idx], "rendered": False}
             for idx in range(len(scenes))
         ]
-        successful_clips = 0
 
-        for i, scene_description in enumerate(scenes):
-            log(
-                "--- Generating Clip "
-                + str(i + 1)
-                + "/"
-                + str(len(scenes))
-                + ": "
-                + scene_description
-                + " ---"
-            )
-            output_filename = "clip_" + str(i) + ".mp4"
+        log("=== Step 3: Generating clips in parallel ===")
+        results = await process_clips_in_batches(scenes, client, output_dir, captions, batch_size=3)
 
-            code = None
-            error = "Initial code generation failed."
-
-            for attempt in range(1, 4):
-                log("--- Clip " + str(i + 1) + ", Attempt " + str(attempt) + " ---")
-                if code is None:
-                    code = generate_manim_code(client, scene_description)
-                else:
-                    code = correct_manim_code(client, code, error)
-
-                video_path, error = render_manim_code(code, output_dir, output_filename)
-
-                if error is None:
-                    log("--- Clip " + str(i + 1) + " rendered successfully. ---")
-                    print("CLIP_SUCCESS: " + video_path, flush=True)
-                    successful_clips += 1
-                    if i < len(captions):
-                        captions[i]["rendered"] = True
-                    break
-
-                log(
-                    "--- Clip "
-                    + str(i + 1)
-                    + ", Attempt "
-                    + str(attempt)
-                    + " failed. ---"
-                )
-
-            if error is not None:
-                log(
-                    "--- FAILED to generate clip "
-                    + str(i + 1)
-                    + " after 3 attempts. Skipping this clip. ---"
-                )
+        # Count successes
+        successful_clips = sum(1 for r in results if r["success"])
+        log(f"=== Completed: {successful_clips}/{len(scenes)} clips successful ===")
 
         if successful_clips == 0:
             log("--- All clips failed to generate. Aborting video generation. ---")
@@ -544,11 +649,20 @@ def main():
             print("FINAL_RESULT: " + json.dumps({"success": True, "captions": captions}))
 
     except Exception as e:
-        log("--- FATAL CRASH in agent's main loop: " + str(e) + " ---")
+        log(f"--- FATAL CRASH in agent's main loop: {str(e)} ---")
+        import traceback
+        log(traceback.format_exc())
         print(
             "FINAL_RESULT: "
             + json.dumps({"success": False, "error": "Agent crashed unexpectedly"})
         )
+    finally:
+        executor.shutdown(wait=True)
+
+
+def main():
+    """Entry point that runs the async main function"""
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":

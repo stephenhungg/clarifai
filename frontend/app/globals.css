@@ -23,6 +23,16 @@
     min-height: 100vh;
   }
 
+  /* Smooth page transitions */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Prevent layout shift during transitions */
+  main {
+    will-change: opacity, transform;
+  }
+
   ::selection {
     background: rgba(255, 255, 255, 0.25);
     color: #020202;
@@ -47,7 +57,11 @@
 
 @layer components {
   .card {
-    @apply relative overflow-hidden rounded-3xl p-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-glow;
+    @apply relative overflow-hidden rounded-3xl p-8 border border-white/20 bg-black/40 backdrop-blur-3xl;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 255, 255, 0.1) inset;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                border-color 0.3s ease;
   }
 
   .card::after {
@@ -57,23 +71,38 @@
     background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.25), transparent);
     opacity: 0;
     transform: translateX(-50%);
+    pointer-events: none;
+    will-change: opacity, transform;
   }
 
   .card-hover {
-    @apply transition-transform duration-300;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                border-color 0.3s ease;
+  }
+
+  .card-hover::after {
+    transition: opacity 0.5s cubic-bezier(0.19, 1, 0.22, 1) 0.1s;
   }
 
   .card-hover:hover {
-    @apply -translate-y-1 shadow-[0_40px_120px_rgba(0,0,0,0.65)];
+    @apply -translate-y-1;
+    box-shadow: 0 40px 120px rgba(0, 0, 0, 0.7), 0 0 60px rgba(255, 255, 255, 0.15) inset, 0 0 80px rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .card-hover:hover::after {
-    animation: shine 2s linear forwards;
-    opacity: 0.8;
+    opacity: 0.65;
+    animation: shine 2.5s cubic-bezier(0.4, 0, 0.2, 1) 0.4s forwards;
   }
 
   .glass-panel {
-    @apply border border-white/10 bg-white/5 backdrop-blur-2xl shadow-glow rounded-[26px];
+    @apply border border-white/20 bg-black/40 backdrop-blur-3xl rounded-[26px];
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 255, 255, 0.1) inset;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                border-color 0.3s ease,
+                background-color 0.3s ease;
   }
 
   .btn-primary {

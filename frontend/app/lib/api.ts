@@ -116,6 +116,16 @@ export async function getPaper(paperId: string): Promise<Paper> {
   return response.json();
 }
 
+export async function deletePaper(paperId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/api/papers/${paperId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to delete paper');
+  }
+}
+
 export async function analyzePaper(paperId: string): Promise<void> {
   const response = await fetch(`${API_URL}/api/papers/${paperId}/analyze`, {
     method: 'POST',

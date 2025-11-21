@@ -35,10 +35,22 @@
 *   `Arrow(start=LEFT, end=RIGHT, buff=0)`
 *   **Dashed Lines:** Use `DashedLine(start=..., end=...)`. Do NOT use `Line(...).set_stroke(dash_array=...)`.
 
-### 6. LAYOUT CONSTANTS
+### 6. LAYOUT CONSTANTS & SPACING
 *   Screen is roughly 14 units wide ( -7 to +7 ) and 8 units tall ( -4 to +4 ).
 *   Use `UP`, `DOWN`, `LEFT`, `RIGHT` vectors.
 *   `ORIGIN` is (0,0,0).
+*   **CRITICAL SPACING RULES:**
+    *   Always use `buff` parameter for spacing: `.next_to(obj, RIGHT, buff=0.5)` (minimum 0.3, recommended 0.5-1.0)
+    *   For text groups: `VGroup(text1, text2).arrange(DOWN, buff=0.4)` (minimum 0.3 between lines)
+    *   Edge positioning: `text.to_edge(UP, buff=0.5)` to avoid clipping at screen edges
+    *   Multiple elements: Use `VGroup(...).arrange()` instead of manual positioning
+    *   **NEVER** place two text objects at the same position or within 0.2 units
+*   **SAFE ZONES:**
+    *   Top zone (titles): Y > 2.5, use `.to_edge(UP, buff=0.5)`
+    *   Bottom zone (captions): Y < -2.5, use `.to_edge(DOWN, buff=0.5)`
+    *   Left zone: X < -4, use `.to_edge(LEFT, buff=0.5)`
+    *   Right zone: X > 4, use `.to_edge(RIGHT, buff=0.5)`
+    *   Center zone: Keep main content/animations here
 
 ### 7. COMMON PITFALLS TO AVOID
 *   **No `ShowCreation`:** Use `Create` instead.

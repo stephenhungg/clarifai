@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Upload } from 'lucide-react';
 import { Navigation } from './components/navigation';
+import { ShaderCanvas } from './components/shader-canvas';
 import { uploadPaper } from './lib/api';
 
 export default function Home() {
@@ -12,6 +13,12 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    // Trigger initial animation immediately
+    setIsLoaded(true);
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -66,27 +73,37 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-56 right-0 h-[32rem] w-[32rem] rounded-full bg-white/10 blur-[140px] opacity-60 animate-float" />
-        <div
-          className="absolute bottom-0 left-[-10rem] h-[28rem] w-[28rem] rounded-full bg-white/5 blur-[160px] opacity-50 animate-float"
-          style={{ animationDelay: '2s' }}
-        />
+    <div className="relative min-h-screen overflow-hidden text-text-primary">
+      {/* Fallback background in case WebGL fails */}
+      <div className="fixed inset-0 bg-bg-primary -z-10" />
+
+      {/* Shader Background with intro animation */}
+      <div className="fixed inset-0" style={{ zIndex: 0 }}>
+        <ShaderCanvas className="w-full h-full pointer-events-none" introDuration={2.5} />
       </div>
+
+      {/* Overlay for better text readability */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1.0, delay: 1.5, ease: 'easeOut' }}
+        className="fixed inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/60 pointer-events-none"
+        style={{ zIndex: 1 }}
+      />
+
       <Navigation />
 
       <main className="relative z-10 pt-32 pb-20 px-6">
         <div className="mx-auto max-w-4xl space-y-16">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.19, 1, 0.22, 1] }}
+            transition={{ duration: 1.0, ease: [0.16, 1, 0.3, 1], delay: 2.0 }}
             className="text-center space-y-6"
           >
             <p className="text-sm uppercase tracking-[0.4em] text-text-tertiary">ClarifAI Studio</p>
             <h1 className="text-[clamp(2.75rem,6vw,4.75rem)] font-light leading-tight tracking-[-0.04em]">
-              Liquid glass interface for <span className="text-white">research intuition</span>.
+              AI-powered research assistant for <span className="text-white">research intuition</span>.
             </h1>
             <p className="text-text-secondary text-lg">
               Upload a paper, let agents distill it into concepts, videos, and living notebooks.
@@ -94,14 +111,14 @@ export default function Home() {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.15, ease: [0.19, 1, 0.22, 1] }}
+            initial={{ opacity: 0, y: 40, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 1.0, delay: 2.3, ease: [0.16, 1, 0.3, 1] }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`group relative glass-panel p-14 transition-all duration-300 ${
-              isDragging ? 'ring-2 ring-white/40 scale-[0.99]' : 'hover:ring-2 hover:ring-white/15'
+            className={`group relative rounded-3xl border border-white/20 bg-black/40 backdrop-blur-3xl shadow-2xl p-14 transition-all duration-300 ${
+              isDragging ? 'ring-2 ring-white/50 scale-[0.99] bg-black/50' : 'hover:ring-2 hover:ring-white/30 hover:bg-black/50 hover:shadow-[0_0_80px_rgba(255,255,255,0.1)]'
             } ${isUploading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}
           >
             <div className="pointer-events-none absolute inset-0 rounded-[26px] bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-60" />
@@ -117,7 +134,7 @@ export default function Home() {
               <motion.div
                 animate={isDragging ? { scale: 1.12 } : { scale: 1 }}
                 transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-                className="rounded-full border border-white/10 bg-white/5 p-6 backdrop-blur-xl shadow-inner-glow"
+                className="rounded-full border border-white/20 bg-black/30 p-6 backdrop-blur-xl shadow-[0_0_40px_rgba(255,255,255,0.15)]"
               >
                 {isUploading ? (
                   <div className="h-16 w-16 animate-spin rounded-full border-4 border-white/15 border-t-white" />
@@ -159,9 +176,9 @@ export default function Home() {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3, ease: [0.19, 1, 0.22, 1] }}
+            transition={{ duration: 1.0, delay: 2.5, ease: [0.16, 1, 0.3, 1] }}
             className="grid gap-6 md:grid-cols-3"
           >
             {[
@@ -180,9 +197,9 @@ export default function Home() {
             ].map((feature, index) => (
               <motion.div
                 key={feature.title}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.4 + index * 0.1 }}
+                transition={{ duration: 0.8, delay: 2.6 + index * 0.15, ease: [0.16, 1, 0.3, 1] }}
                 className="card card-hover text-left"
               >
                 <p className="text-sm uppercase tracking-[0.3em] text-text-tertiary mb-3">

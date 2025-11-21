@@ -351,6 +351,9 @@ async def delete_paper(paper_id: str) -> Dict[str, str]:
         # Remove from database
         del papers_db[paper_id]
 
+        # Persist deletion to disk
+        save_papers_to_disk()
+
         return {"message": "Paper deleted successfully"}
 
     except Exception as e:
