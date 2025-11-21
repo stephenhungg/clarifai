@@ -27,25 +27,35 @@ async def run_agent_script(
     # video.py is at: backend/app/api/endpoints/video.py
     # We need to go up to project root: parents[4] = backend/app/api/endpoints -> backend/app/api -> backend/app -> backend -> project_root
     current_file = Path(__file__).resolve()
-    
+
     # Try to find project root by going up from current file
-    # In Docker, the path might be /backend/app/api/endpoints/video.py
-    # In local, it might be /Users/.../clarifai/backend/app/api/endpoints/video.py
     project_root = current_file.parents[4]
-    
-    # Check if we're in Docker (path starts with /backend)
-    if str(current_file).startswith('/backend'):
-        # In Docker, project root is /backend
-        project_root = Path('/backend')
-        agent_script_path = project_root / "run_agent.py"
-        python_executable = project_root / "agent_env" / "bin" / "python"
-    else:
-        # Local development
+
+    # Build a list of candidate backend roots (covers /backend deployments and /app/backend)
+    candidate_backend_roots = [
+        Path("/backend"),
+        project_root / "backend",
+        project_root,
+    ]
+
+    agent_script_path = None
+    python_executable: Any = None
+
+    for backend_root in candidate_backend_roots:
+        script_candidate = backend_root / "run_agent.py"
+        if script_candidate.exists():
+            agent_script_path = script_candidate
+            env_python = backend_root / "agent_env" / "bin" / "python"
+            if env_python.exists():
+                python_executable = env_python
+            break
+
+    # If we still haven't found the script, fall back to the original relative path
+    if agent_script_path is None:
         agent_script_path = project_root / "backend" / "run_agent.py"
-        python_executable = project_root / "backend" / "agent_env" / "bin" / "python"
-    
-    # Fallback to system python if agent_env doesn't exist
-    if isinstance(python_executable, Path) and not python_executable.exists():
+
+    # Use system python if the virtualenv doesn’t exist
+    if python_executable is None or (isinstance(python_executable, Path) and not python_executable.exists()):
         python_executable = "python3"
     
     api_key = settings.GEMINI_API_KEY

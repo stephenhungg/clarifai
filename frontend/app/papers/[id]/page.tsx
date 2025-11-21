@@ -444,6 +444,73 @@ export default function PaperDetailPage() {
     }
   };
 
+  const renderSceneGuide = (video: VideoModalData | null, variant: 'inline' | 'modal' = 'inline') => {
+    if (!video?.captions || video.captions.length === 0) {
+      return (
+        <div className="flex-1 flex items-center justify-center text-center">
+          <p className="text-xs text-text-tertiary">
+            Scene captions will appear once this concept has completed at least one video pass.
+          </p>
+        </div>
+      );
+    }
+
+    const completed = video.captions.filter((caption) => caption.rendered !== false);
+    const skipped = video.captions.filter((caption) => caption.rendered === false);
+
+    const captionCardClass =
+      'rounded-lg border border-accent-border bg-bg-primary/50 p-3 space-y-2';
+
+    const sectionLabelClass =
+      'text-[11px] font-semibold uppercase tracking-wide text-text-tertiary mb-2';
+
+    return (
+      <div className="space-y-4">
+        {completed.length > 0 && (
+          <div>
+            <p className={sectionLabelClass}>Scenes in video</p>
+            <div className="space-y-3">
+              {completed.map((caption, index) => (
+                <div key={`rendered-${caption.clip}-${index}`} className={captionCardClass}>
+                  <div className="flex items-center justify-between text-xs text-text-tertiary">
+                    <span className="font-medium text-text-secondary">Scene {caption.clip}</span>
+                    <span className="text-[11px] text-text-tertiary uppercase">
+                      In Final Cut
+                    </span>
+                  </div>
+                  <p className="text-sm text-text-primary leading-relaxed">{caption.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {skipped.length > 0 && (
+          <div>
+            <p className={sectionLabelClass}>
+              Skipped {variant === 'inline' ? '(agent could not render)' : '(not rendered)'}
+            </p>
+            <div className="space-y-2">
+              {skipped.map((caption, index) => (
+                <div
+                  key={`skipped-${caption.clip}-${index}`}
+                  className="rounded-lg border border-accent-border/60 bg-bg-secondary/50 p-3"
+                >
+                  <div className="flex items-center justify-between text-xs uppercase text-text-tertiary">
+                    <span>Scene {caption.clip}</span>
+                    <span className="text-accent-error font-semibold tracking-wide">
+                      Not in final cut
+                    </span>
+                  </div>
+                  <p className="text-sm text-text-tertiary mt-1">{caption.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (!paperId) {
     return (
       <div className="min-h-screen bg-bg-primary">
@@ -787,37 +854,9 @@ export default function PaperDetailPage() {
                       Captions are generated directly from the agent’s outline.
                     </p>
                   </div>
-                  {currentVideo.captions && currentVideo.captions.length > 0 ? (
-                    <div className="space-y-3 overflow-y-auto pr-1">
-                      {currentVideo.captions.map((caption, index) => (
-                        <div
-                          key={`${caption.clip}-${index}`}
-                          className="rounded-lg border border-accent-border bg-bg-primary/50 p-3"
-                        >
-                          <div className="flex items-center justify-between text-xs text-text-tertiary mb-2">
-                            <span className="font-medium text-text-secondary">
-                              Scene {caption.clip}
-                            </span>
-                            {caption.rendered === false && (
-                              <span className="text-accent-error text-[11px] uppercase tracking-wide">
-                                Not in final cut
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-text-primary leading-relaxed">
-                            {caption.text}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-center">
-                      <p className="text-xs text-text-tertiary">
-                        Scene captions will appear once this concept has completed at least one video
-                        pass.
-                      </p>
-                    </div>
-                  )}
+                  <div className="overflow-y-auto pr-1">
+                    {renderSceneGuide(currentVideo, 'inline')}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -875,35 +914,9 @@ export default function PaperDetailPage() {
                       Follow along with the narration for each generated clip.
                     </p>
                   </div>
-                  {selectedVideo.captions && selectedVideo.captions.length > 0 ? (
-                    <div className="space-y-3 overflow-y-auto pr-2">
-                      {selectedVideo.captions.map((caption, index) => (
-                        <div
-                          key={`${caption.clip}-${index}`}
-                          className="rounded-lg border border-accent-border bg-bg-primary/50 p-3"
-                        >
-                          <div className="flex items-center justify-between text-xs text-text-tertiary mb-2">
-                            <span className="font-medium text-text-secondary">
-                              Scene {caption.clip}
-                            </span>
-                            {caption.rendered === false && (
-                              <span className="text-accent-error text-[11px] uppercase tracking-wide">
-                                Not in final cut
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-text-primary leading-relaxed">{caption.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-center">
-                      <p className="text-xs text-text-tertiary">
-                        Scene captions will appear once this concept has completed at least one video
-                        pass.
-                      </p>
-                    </div>
-                  )}
+                  <div className="overflow-y-auto pr-2">
+                    {renderSceneGuide(selectedVideo, 'modal')}
+                  </div>
                 </div>
               </div>
               <div className="flex flex-col gap-2 items-start justify-between sm:flex-row sm:items-center">

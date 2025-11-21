@@ -5,7 +5,7 @@ Analysis API endpoints for paper concept extraction and clarification
 import uuid
 from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 from pydantic import BaseModel
 
 from ...models.paper import ConceptResponse, Concept
@@ -128,7 +128,7 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
 
 
 @router.get("/papers/{paper_id}/concepts")
-async def get_paper_concepts(paper_id: str) -> ConceptResponse:
+async def get_paper_concepts(paper_id: str):
     """
     Get extracted concepts for a paper
     """
@@ -137,10 +137,20 @@ async def get_paper_concepts(paper_id: str) -> ConceptResponse:
 
     paper = papers_db[paper_id]
 
-    # Add video_status to each concept from concept_videos
     concepts_with_status = []
     for concept in paper.concepts:
-        concept_dict = concept.model_dump()
+        # Build a dict that matches the frontend expectations
+        concept_dict = {
+            "id": concept.id,
+            "name": concept.name,
+            "description": concept.description,
+            "importance_score": concept.importance_score,
+            "page_numbers": concept.page_numbers,
+            "text_snippets": concept.text_snippets,
+            "related_concepts": concept.related_concepts,
+            "type": concept.concept_type,
+        }
+
         # Get video status from concept_videos if it exists
         concept_video = paper.concept_videos.get(concept.id)
         if concept_video:
@@ -164,8 +174,13 @@ async def get_paper_concepts(paper_id: str) -> ConceptResponse:
         
         concepts_with_status.append(concept_dict)
 
-    # Return as dict with video_status, not as Concept objects
-    return {"concepts": concepts_with_status, "total_count": len(concepts_with_status)}
+    # Return JSON response directly so extra fields aren't stripped
+    return JSONResponse(
+        content={
+            "concepts": concepts_with_status,
+            "total_count": len(concepts_with_status),
+        }
+    )
 
 
 @router.delete("/papers/{paper_id}/concepts/{concept_id}")
