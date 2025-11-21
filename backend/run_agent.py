@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import subprocess
+import time
 import tempfile
 import re
 from pathlib import Path
@@ -33,6 +34,40 @@ def initialize_llm(api_key):
     return client
 
 
+def call_gemini_with_retries(client, contents, temperature, context_label):
+    """Calls Gemini with retries for quota/rate limit errors."""
+    max_retries = 5
+    base_delay = 2
+    for attempt in range(1, max_retries + 1):
+        try:
+            return client.models.generate_content(
+                model="gemini-3-pro-preview",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=temperature,
+                ),
+            )
+        except Exception as e:
+            error_message = str(e)
+            log(
+                f"--- WARNING: {context_label} attempt {attempt} failed with error: {error_message} ---"
+            )
+            quota_exhausted = (
+                "RESOURCE_EXHAUSTED" in error_message
+                or "quota" in error_message.lower()
+                or "429" in error_message
+            )
+            if not quota_exhausted or attempt == max_retries:
+                log("--- ERROR: Exhausted retries for Gemini call. ---")
+                raise
+
+            delay = base_delay * attempt
+            log(
+                f"--- INFO: Retrying {context_label} in {delay} seconds due to quota exhaustion. ---"
+            )
+            time.sleep(delay)
+
+
 def get_video_scenes(client, concept_name, concept_description):
     """Uses an AI call to split a concept into logical, thematic scenes for a video."""
     log("--- DEBUG: Calling LLM to determine video scenes. ---")
@@ -43,12 +78,11 @@ def get_video_scenes(client, concept_name, concept_description):
 
     log("--- PROMPT FOR SCENE SPLITTING ---")
     log(prompt)
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.3,
-        )
+    response = call_gemini_with_retries(
+        client,
+        prompt,
+        temperature=0.3,
+        context_label="Scene splitting",
     )
     response_text = response.text.strip()
     log("--- AI RESPONSE (SCENES) ---")
@@ -80,6 +114,48 @@ def get_video_scenes(client, concept_name, concept_description):
     ] or [concept_description]
 
 
+def replace_tex_with_text(code):
+    """Replaces any Tex/MathTex usage with Text to avoid LaTeX dependency."""
+    replaced = False
+
+    def _sub(match):
+        nonlocal replaced
+        replaced = True
+        return "Text("
+
+    code = re.sub(r"\b(?:MathTex|Tex)\s*\(", _sub, code)
+    if replaced:
+        log("--- DEBUG: Replaced Tex/MathTex with Text to avoid LaTeX dependency. ---")
+        # Remove raw-string prefixes immediately following Text(
+        code = code.replace("Text(r\"", "Text(\"").replace("Text(r'", "Text('")
+    return code
+
+
+def ensure_rate_functions_usage(code):
+    """Ensures custom easing functions import and usage use rate_functions namespace."""
+    needs_import = False
+
+    def replace_ease(match):
+        nonlocal needs_import
+        needs_import = True
+        return f"rate_functions.{match.group(0)}"
+
+    code = re.sub(r"(?<!rate_functions\.)\bease_[a-z0-9_]+\b", replace_ease, code)
+
+    if needs_import and "from manim.utils import rate_functions" not in code:
+        lines = code.splitlines()
+        insert_idx = 0
+        for idx, line in enumerate(lines):
+            if line.strip().startswith("from manim import *"):
+                insert_idx = idx + 1
+                break
+        lines.insert(insert_idx, "from manim.utils import rate_functions")
+        code = "\n".join(lines)
+        log("--- DEBUG: Added rate_functions import for easing helpers. ---")
+
+    return code
+
+
 def sanitize_code(code):
     """Aggressively sanitizes the AI's code output."""
     log("--- DEBUG: Sanitizing AI response. ---")
@@ -94,6 +170,9 @@ def sanitize_code(code):
         code = "from manim import *\n\n" + code
         log("--- DEBUG: Added missing 'from manim import *' import. ---")
 
+    code = replace_tex_with_text(code)
+    code = ensure_rate_functions_usage(code)
+
     return code
 
 
@@ -104,12 +183,11 @@ def generate_manim_code(client, description):
 
     log("--- PROMPT FOR MANIM CODE ---")
     log(prompt)
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.3,
-        )
+    response = call_gemini_with_retries(
+        client,
+        prompt,
+        temperature=0.3,
+        context_label="Initial Manim code generation",
     )
     code = response.text.strip()
     log("--- AI RESPONSE (RAW CODE) ---")
@@ -124,12 +202,11 @@ def correct_manim_code(client, code, error):
 
     log("--- PROMPT FOR CODE CORRECTION ---")
     log(prompt)
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=0.3,
-        )
+    response = call_gemini_with_retries(
+        client,
+        prompt,
+        temperature=0.3,
+        context_label="Manim code correction",
     )
     new_code = response.text.strip()
     log("--- AI RESPONSE (RAW CORRECTED CODE) ---")
@@ -222,6 +299,10 @@ def main():
         client = initialize_llm(api_key)
 
         scenes = get_video_scenes(client, concept_name, concept_description)
+        captions = [
+            {"clip": idx + 1, "text": scene_description, "rendered": False}
+            for idx, scene_description in enumerate(scenes)
+        ]
         successful_clips = 0
 
         for i, scene_description in enumerate(scenes):
@@ -252,6 +333,8 @@ def main():
                     log("--- Clip " + str(i + 1) + " rendered successfully. ---")
                     print("CLIP_SUCCESS: " + video_path, flush=True)
                     successful_clips += 1
+                    if i < len(captions):
+                        captions[i]["rendered"] = True
                     break
 
                 log(
@@ -273,11 +356,17 @@ def main():
             log("--- All clips failed to generate. Aborting video generation. ---")
             print(
                 "FINAL_RESULT: "
-                + json.dumps({"success": False, "error": "All clips failed to render."})
+                + json.dumps(
+                    {
+                        "success": False,
+                        "error": "All clips failed to render.",
+                        "captions": captions,
+                    }
+                )
             )
         else:
             log("--- Agent finished generating clips. ---")
-            print("FINAL_RESULT: " + json.dumps({"success": True}))
+            print("FINAL_RESULT: " + json.dumps({"success": True, "captions": captions}))
 
     except Exception as e:
         log("--- FATAL CRASH in agent's main loop: " + str(e) + " ---")

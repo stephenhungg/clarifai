@@ -151,11 +151,16 @@ async def get_paper_concepts(paper_id: str) -> ConceptResponse:
                 "completed": "ready",
                 "failed": "error"
             }
-            concept_dict["video_status"] = status_map.get(concept_video.status.value, "not_generated")
+            mapped_status = status_map.get(concept_video.status.value, "not_generated")
+            concept_dict["video_status"] = mapped_status
+            print(f"[CONCEPTS] Concept {concept.id}: video_status={concept_video.status.value} -> {mapped_status}")
             if concept_video.video_path:
                 concept_dict["video_url"] = concept_video.video_path
+            if concept_video.captions:
+                concept_dict["video_captions"] = concept_video.captions
         else:
             concept_dict["video_status"] = "not_generated"
+            print(f"[CONCEPTS] Concept {concept.id}: no concept_video entry, defaulting to 'not_generated'")
         
         concepts_with_status.append(concept_dict)
 

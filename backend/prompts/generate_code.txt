@@ -15,6 +15,12 @@ Your mission is to produce a short, cinematic-quality animation that is both unf
 2.  **Clean & Focused:** Every frame must be a work of art. Maintain a clean, focused composition. Gracefully `FadeOut` old elements before introducing new ones to prevent clutter.
 3.  **Refined Fonts:** Use smaller, more elegant font sizes for text and labels. Avoid large, distracting fonts. A scale of `0.5` to `0.7` is often appropriate.
 
+--- RENDERING RULES ---
+1.  Immediately set `self.camera.background_color = "#000000"` at the top of every scene to guarantee a pure black background.
+2.  Keep text readable and never overlapping: arrange related text with `VGroup`/`arrange()` and fade out or move older text before adding new captions. At most two text blocks should be on screen simultaneously.
+3.  Ensure plenty of breathing room between visual elements; avoid stacking labels directly on top of shapes.
+4.  Use high-contrast colors (neon accents on black) so elements pop clearly against the dark background.
+
 --- STRICT TECHNICAL REQUIREMENTS ---
 1.  **Focused & Concise:** The animation must be STRICTLY bounded to the description. Do not introduce extraneous concepts.
 2.  **Code Only:** Your response MUST be only raw Python code for Manim Community v0.18.1.

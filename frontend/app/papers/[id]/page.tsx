@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Plus, Send } from 'lucide-react';
+import { ArrowLeft, Plus, Send, X } from 'lucide-react';
 import { Navigation } from '../../components/navigation';
 import { StatusBadge } from '../../components/status-badge';
 import { PDFViewer } from '../../components/pdf-viewer';
@@ -18,6 +18,7 @@ import {
   type Paper,
   type Concept,
   type ChatMessage,
+  type VideoCaption,
 } from '../../lib/api';
 
 // Helper function to fix abstract text that has lost spaces
@@ -28,6 +29,15 @@ function fixAbstractSpacing(text: string): string {
   fixed = fixed.replace(/\s+/g, ' ').trim();
   return fixed;
 }
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+type VideoModalData = {
+  id: string;
+  url: string;
+  name: string;
+  captions?: VideoCaption[];
+};
 
 export default function PaperDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
@@ -46,8 +56,11 @@ export default function PaperDetailPage() {
   const [analysisMessage, setAnalysisMessage] = useState<string>('Starting analysis...');
   const [videoLogs, setVideoLogs] = useState<string[]>([]);
   const [generatingConceptId, setGeneratingConceptId] = useState<string | null>(null);
+  const [currentVideo, setCurrentVideo] = useState<VideoModalData | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<VideoModalData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const videoPanelRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -207,9 +220,23 @@ export default function PaperDetailPage() {
     }
   };
 
+  const resolveVideoUrl = (path: string) =>
+    path.startsWith('http') ? path : `${API_BASE}${path}`;
+
+  const createVideoData = (concept: Concept): VideoModalData => ({
+    id: concept.id,
+    url: resolveVideoUrl(concept.video_url || ''),
+    name: concept.name,
+    captions: concept.video_captions,
+  });
+
   const handleGenerateVideo = async (conceptId: string) => {
     if (!paperId) return;
     try {
+      setSelectedVideo(null);
+      if (currentVideo?.id === conceptId) {
+        setCurrentVideo(null);
+      }
       setGeneratingConceptId(conceptId);
       setVideoLogs([]);
       await generateVideo(paperId, conceptId);
@@ -224,6 +251,41 @@ export default function PaperDetailPage() {
       setGeneratingConceptId(null);
     }
   };
+
+  const handleConceptVideoAction = (concept: Concept) => {
+    if (!paperId) return;
+
+    if (concept.video_status === 'ready' && concept.video_url) {
+      const videoData = createVideoData(concept);
+      setCurrentVideo(videoData);
+      videoPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    handleGenerateVideo(concept.id);
+  };
+
+  // Automatically load the latest ready video
+  useEffect(() => {
+    const readyConcept = concepts.find(
+      (concept) => concept.video_status === 'ready' && concept.video_url
+    );
+
+    if (!readyConcept) {
+      if (!generatingConceptId) {
+        setCurrentVideo(null);
+      }
+      return;
+    }
+
+    const videoData = createVideoData(readyConcept);
+    setCurrentVideo((prev) => {
+      if (!prev || prev.id !== videoData.id || prev.url !== videoData.url) {
+        return videoData;
+      }
+      return prev;
+    });
+  }, [concepts, generatingConceptId]);
 
   // Connect to WebSocket when video generation starts
   useEffect(() => {
@@ -304,7 +366,10 @@ export default function PaperDetailPage() {
           const updatedConcepts = await getConcepts(paperId);
           const updatedConcept = updatedConcepts.find((c) => c.id === generatingConceptId);
           console.log('Polling video status:', updatedConcept?.video_status, 'for concept:', generatingConceptId);
-          if (updatedConcept && updatedConcept.video_status !== 'generating') {
+          
+          // Only close WebSocket if status is definitively NOT generating
+          // If status is undefined or 'not_generated', keep the connection open (might be a timing issue)
+          if (updatedConcept && updatedConcept.video_status && updatedConcept.video_status !== 'generating' && updatedConcept.video_status !== 'not_generated') {
             console.log('Video generation completed, status:', updatedConcept.video_status);
             if (statusIntervalRef.current) {
               clearInterval(statusIntervalRef.current);
@@ -315,12 +380,15 @@ export default function PaperDetailPage() {
             }
             setGeneratingConceptId(null);
             setConcepts(updatedConcepts);
+          } else if (updatedConcept && (!updatedConcept.video_status || updatedConcept.video_status === 'not_generated')) {
+            // Status not set yet or reset - log but don't close (might be a timing issue)
+            console.log('Video status not set yet or reset, keeping WebSocket open. Status:', updatedConcept.video_status);
           }
         } catch (err) {
           console.error('Failed to poll video status:', err);
         }
       }, 3000); // Poll every 3 seconds
-    }, 2000); // Start polling after 2 seconds
+    }, 5000); // Start polling after 5 seconds (increased to give backend more time)
     
     // Cleanup
     return () => {
@@ -472,7 +540,7 @@ export default function PaperDetailPage() {
           </motion.div>
 
           {/* Grid Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* PDF Viewer - Left Side (Wide) */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
@@ -541,7 +609,7 @@ export default function PaperDetailPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleGenerateVideo(concept.id);
+                            handleConceptVideoAction(concept);
                           }}
                           disabled={concept.video_status === 'generating'}
                           className={`w-full text-xs py-1.5 px-2 rounded-md transition-colors ${
@@ -551,7 +619,7 @@ export default function PaperDetailPage() {
                           }`}
                         >
                           {concept.video_status === 'ready'
-                            ? '✓ View Video'
+                            ? '✓ Watch Video'
                             : concept.video_status === 'generating'
                             ? 'Generating...'
                             : 'Generate Video'}
@@ -668,7 +736,192 @@ export default function PaperDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Video Preview Section */}
+        <motion.div
+          ref={videoPanelRef}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          id="video-preview"
+          className="mt-6"
+        >
+          <div className="card">
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-text-tertiary">Video Preview</p>
+                <h2 className="text-lg font-semibold text-text-primary">
+                  {currentVideo ? currentVideo.name : 'No rendered video yet'}
+                </h2>
+                <p className="text-xs text-text-tertiary">
+                  Select any concept with a completed video to load it here.
+                </p>
+              </div>
+              {currentVideo && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedVideo(currentVideo)}
+                    className="btn-secondary text-xs px-3 py-1.5"
+                  >
+                    Open Full Player
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {currentVideo ? (
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                <div className="bg-black rounded-xl overflow-hidden border border-accent-border">
+                  <video
+                    key={`${currentVideo.id}-${currentVideo.url}`}
+                    controls
+                    playsInline
+                    className="w-full h-full max-h-[60vh] bg-black"
+                    src={currentVideo.url}
+                  />
+                </div>
+                <div className="bg-bg-secondary rounded-xl border border-accent-border p-4 flex flex-col">
+                  <div className="mb-3">
+                    <p className="text-sm font-semibold text-text-primary">Scene Guide</p>
+                    <p className="text-xs text-text-tertiary">
+                      Captions are generated directly from the agent’s outline.
+                    </p>
+                  </div>
+                  {currentVideo.captions && currentVideo.captions.length > 0 ? (
+                    <div className="space-y-3 overflow-y-auto pr-1">
+                      {currentVideo.captions.map((caption, index) => (
+                        <div
+                          key={`${caption.clip}-${index}`}
+                          className="rounded-lg border border-accent-border bg-bg-primary/50 p-3"
+                        >
+                          <div className="flex items-center justify-between text-xs text-text-tertiary mb-2">
+                            <span className="font-medium text-text-secondary">
+                              Scene {caption.clip}
+                            </span>
+                            {caption.rendered === false && (
+                              <span className="text-accent-error text-[11px] uppercase tracking-wide">
+                                Not in final cut
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-text-primary leading-relaxed">
+                            {caption.text}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-center">
+                      <p className="text-xs text-text-tertiary">
+                        Scene captions will appear once this concept has completed at least one video
+                        pass.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center min-h-[220px] text-sm text-text-secondary">
+                {generatingConceptId ? (
+                  <>
+                    <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin mb-3" />
+                    <p>Generating video…</p>
+                    <p className="text-xs text-text-tertiary mt-1">
+                      Logs will appear once the agent starts streaming output.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>No video has been rendered for this paper yet.</p>
+                    <p className="text-xs text-text-tertiary mt-1">
+                      Use the “Generate Video” button on any concept to create one.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </motion.div>
       </main>
+      {selectedVideo ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+          <div className="relative w-full max-w-5xl bg-bg-primary rounded-2xl shadow-2xl border border-accent-border p-6">
+            <button
+              onClick={() => setSelectedVideo(null)}
+              className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors"
+              aria-label="Close video player"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="space-y-6">
+              <div className="flex flex-col gap-1">
+                <p className="text-xs uppercase tracking-wide text-text-tertiary">Now Playing</p>
+                <h3 className="text-lg font-semibold text-text-primary">{selectedVideo.name}</h3>
+              </div>
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                <div className="bg-black rounded-xl overflow-hidden border border-accent-border">
+                  <video
+                    key={selectedVideo.url}
+                    controls
+                    playsInline
+                    className="w-full h-full max-h-[70vh] bg-black"
+                    src={selectedVideo.url}
+                  />
+                </div>
+                <div className="bg-bg-secondary rounded-xl border border-accent-border p-4 flex flex-col">
+                  <div className="mb-3">
+                    <p className="text-sm font-semibold text-text-primary">Scene Guide</p>
+                    <p className="text-xs text-text-tertiary">
+                      Follow along with the narration for each generated clip.
+                    </p>
+                  </div>
+                  {selectedVideo.captions && selectedVideo.captions.length > 0 ? (
+                    <div className="space-y-3 overflow-y-auto pr-2">
+                      {selectedVideo.captions.map((caption, index) => (
+                        <div
+                          key={`${caption.clip}-${index}`}
+                          className="rounded-lg border border-accent-border bg-bg-primary/50 p-3"
+                        >
+                          <div className="flex items-center justify-between text-xs text-text-tertiary mb-2">
+                            <span className="font-medium text-text-secondary">
+                              Scene {caption.clip}
+                            </span>
+                            {caption.rendered === false && (
+                              <span className="text-accent-error text-[11px] uppercase tracking-wide">
+                                Not in final cut
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-text-primary leading-relaxed">{caption.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-center">
+                      <p className="text-xs text-text-tertiary">
+                        Scene captions will appear once this concept has completed at least one video
+                        pass.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 items-start justify-between sm:flex-row sm:items-center">
+                <p className="text-xs text-text-tertiary">
+                  Captions are generated directly from the agent’s scene descriptions.
+                </p>
+                <a
+                  href={selectedVideo.url}
+                  download
+                  className="text-sm text-text-secondary hover:text-text-primary underline-offset-4 hover:underline"
+                >
+                  Download video
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

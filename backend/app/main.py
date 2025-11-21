@@ -102,10 +102,11 @@ async def websocket_endpoint(websocket: WebSocket, paper_id: str):
 
 
 # --- THIS IS THE DEFINITIVE PATHING FIX ---
-# Mount the 'videos' directory at the top level of the API.
-videos_dir = Path("videos")
+# Mount the actual backend/videos directory (not app/videos) for download links.
+backend_root = Path(__file__).resolve().parents[1]
+videos_dir = backend_root / "videos"
 os.makedirs(videos_dir, exist_ok=True)
-app.mount("/api/videos", StaticFiles(directory=videos_dir), name="videos")
+app.mount("/api/videos", StaticFiles(directory=str(videos_dir)), name="videos")
 
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(analysis.router, prefix="/api", tags=["analysis"])

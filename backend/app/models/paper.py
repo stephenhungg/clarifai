@@ -2,7 +2,7 @@
 Paper model for Clarifai
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from pydantic import BaseModel, Field, field_serializer
 from enum import Enum
 import uuid
@@ -31,6 +31,7 @@ class ConceptVideo(BaseModel):
     clips_paths: List[str] = []
     created_at: datetime
     logs: List[str] = []
+    captions: List[Dict[str, Any]] = []
 
 
 class Concept(BaseModel):

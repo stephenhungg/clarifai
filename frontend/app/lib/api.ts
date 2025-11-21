@@ -11,6 +11,12 @@ export interface Paper {
   status: 'uploaded' | 'analyzing' | 'analyzed' | 'error';
 }
 
+export interface VideoCaption {
+  clip: number;
+  text: string;
+  rendered?: boolean;
+}
+
 export interface Concept {
   id: string;
   name: string;
@@ -19,6 +25,7 @@ export interface Concept {
   description: string;
   video_status?: 'not_generated' | 'generating' | 'ready' | 'error';
   video_url?: string;
+  video_captions?: VideoCaption[];
   code?: string;
 }
 

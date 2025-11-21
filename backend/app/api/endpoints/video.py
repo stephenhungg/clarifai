@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ...models.paper import Concept, VideoStatus, ConceptVideo
 from ...core.config import settings
-from .upload import papers_db
+from .upload import papers_db, save_papers_to_disk
 
 manager = None
 
@@ -23,20 +23,53 @@ class GenerateVideoRequest(BaseModel):
 async def run_agent_script(
     paper_id: str, concept_name: str, concept_description: str, output_dir: str
 ) -> Dict[str, Any]:
-    project_root = Path(__file__).resolve().parents[4]
-    agent_script_path = project_root / "backend/run_agent.py"
-    # Use system Python instead of agent_env
-    python_executable = "python3"
+    # Calculate paths relative to this file
+    # video.py is at: backend/app/api/endpoints/video.py
+    # We need to go up to project root: parents[4] = backend/app/api/endpoints -> backend/app/api -> backend/app -> backend -> project_root
+    current_file = Path(__file__).resolve()
+    
+    # Try to find project root by going up from current file
+    # In Docker, the path might be /backend/app/api/endpoints/video.py
+    # In local, it might be /Users/.../clarifai/backend/app/api/endpoints/video.py
+    project_root = current_file.parents[4]
+    
+    # Check if we're in Docker (path starts with /backend)
+    if str(current_file).startswith('/backend'):
+        # In Docker, project root is /backend
+        project_root = Path('/backend')
+        agent_script_path = project_root / "run_agent.py"
+        python_executable = project_root / "agent_env" / "bin" / "python"
+    else:
+        # Local development
+        agent_script_path = project_root / "backend" / "run_agent.py"
+        python_executable = project_root / "backend" / "agent_env" / "bin" / "python"
+    
+    # Fallback to system python if agent_env doesn't exist
+    if isinstance(python_executable, Path) and not python_executable.exists():
+        python_executable = "python3"
+    
     api_key = settings.GEMINI_API_KEY
 
     print(f"[VIDEO] API key present: {bool(api_key)}, length: {len(api_key) if api_key else 0}")
     print(f"[VIDEO] Agent script path: {agent_script_path}")
+    print(f"[VIDEO] Python executable: {python_executable}")
     print(f"[VIDEO] Output dir: {output_dir}")
+    print(f"[VIDEO] Script exists: {agent_script_path.exists()}")
+    print(f"[VIDEO] Python exists: {Path(python_executable).exists() if isinstance(python_executable, Path) else True}")
 
     if not api_key:
         return {
             "success": False,
             "error": "GEMINI_API_KEY not found in backend environment.",
+        }
+
+    if not agent_script_path.exists():
+        error_msg = f"Agent script not found at {agent_script_path}. Current working directory: {Path.cwd()}"
+        print(f"[VIDEO] ERROR: {error_msg}")
+        return {
+            "success": False,
+            "error": error_msg,
+            "clip_paths": [],
         }
 
     cmd = [
@@ -48,14 +81,14 @@ async def run_agent_script(
         api_key,
     ]
 
-    print(f"[VIDEO] Running command: {' '.join([cmd[0], cmd[1], cmd[2][:30], cmd[3][:30], cmd[4], '***API_KEY***'])}")
+    print(f"[VIDEO] Running command: {' '.join([str(cmd[0]), str(cmd[1]), str(cmd[2])[:30], str(cmd[3])[:30], str(cmd[4]), '***API_KEY***'])}")
 
     process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        cwd=str(project_root),  # Run from project root to ensure relative paths work
     )
-
     print(f"[VIDEO] Process started with PID: {process.pid}")
 
     final_result = None
@@ -168,10 +201,12 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
         )
 
         clip_paths = result.get("clip_paths", [])
+        concept_video.captions = result.get("captions", [])
 
         if not clip_paths:
             await log("Agent did not produce any successful video clips.")
             concept_video.status = VideoStatus.FAILED
+            save_papers_to_disk()
             return
 
         await log(
@@ -188,13 +223,16 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
             await log(f"Video successfully stitched: {accessible_path}")
             concept_video.video_path = accessible_path
             concept_video.status = VideoStatus.COMPLETED
+            save_papers_to_disk()
         else:
             await log("Stitching failed.")
             concept_video.status = VideoStatus.FAILED
+            save_papers_to_disk()
 
     except Exception as e:
         await log(f"An unexpected error occurred: {e}")
         concept_video.status = VideoStatus.FAILED
+        save_papers_to_disk()
 
 
 async def stitch_clips_simple(
@@ -282,6 +320,10 @@ async def generate_video_for_concept(
         status=VideoStatus.GENERATING,
         created_at=datetime.now(),
     )
+    
+    # Persist the status change immediately so frontend polling sees it
+    save_papers_to_disk()
+    print(f"[VIDEO] Set video_status to GENERATING for concept {concept_id}, paper {paper_id}")
 
     background_tasks.add_task(
         generate_video_background,
@@ -302,7 +344,7 @@ async def get_concept_video_status(paper_id: str, concept_id: str) -> Dict[str, 
     concept_video = paper.concept_videos.get(concept_id)
 
     if not concept_video:
-        return {"status": "not_started", "logs": []}
+        return {"status": "not_started", "logs": [], "captions": []}
 
     # Map backend status to frontend expected values
     status_map = {
@@ -316,4 +358,5 @@ async def get_concept_video_status(paper_id: str, concept_id: str) -> Dict[str, 
         "status": status_map.get(concept_video.status.value, "not_started"),
         "video_url": concept_video.video_path,
         "logs": concept_video.logs,
+        "captions": concept_video.captions,
     }
