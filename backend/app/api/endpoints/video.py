@@ -32,11 +32,23 @@ async def run_agent_script(
     project_root = current_file.parents[4]
 
     # Build a list of candidate backend roots (covers /backend deployments and /app/backend)
-    candidate_backend_roots = [
-        Path("/backend"),
-        project_root / "backend",
-        project_root,
+    candidate_paths = [
+        "/backend",
+        "/app/backend",
+        "/app",
+        os.environ.get("BACKEND_ROOT", ""),
     ]
+    candidate_backend_roots = []
+    for path_str in candidate_paths:
+        if not path_str:
+            continue
+        candidate_backend_roots.append(Path(path_str))
+    candidate_backend_roots.extend(
+        [
+            project_root / "backend",
+            project_root,
+        ]
+    )
 
     agent_script_path = None
     python_executable: Any = None
