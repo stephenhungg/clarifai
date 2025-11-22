@@ -536,6 +536,44 @@ export default function PaperDetailPage() {
     );
   }
 
+  const renderSceneGuide = (video: VideoModalData | null, context: 'inline' | 'modal') => {
+    if (!video || !video.captions || video.captions.length === 0) {
+      return (
+        <p className="text-xs text-text-tertiary italic">
+          No captions available for this video.
+        </p>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {video.captions.map((caption, idx) => (
+          <div
+            key={idx}
+            className={`rounded-lg p-3 ${
+              caption.rendered
+                ? 'bg-white/5 border border-white/10'
+                : 'bg-white/[0.02] border border-white/5'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              <span className={`flex-shrink-0 text-xs font-mono ${
+                caption.rendered ? 'text-text-secondary' : 'text-text-tertiary'
+              }`}>
+                {String(caption.clip).padStart(2, '0')}
+              </span>
+              <p className={`text-xs ${
+                caption.rendered ? 'text-text-secondary' : 'text-text-tertiary'
+              }`}>
+                {caption.text}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
       <div className="pointer-events-none absolute inset-0">

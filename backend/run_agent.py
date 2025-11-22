@@ -217,9 +217,23 @@ def generate_audio_from_text(text, output_path):
     """Convert text to speech using gTTS and save as MP3."""
     try:
         log(f"Generating audio: {text[:50]}...")
-        tts = gTTS(text=text, lang='en', slow=False)
+        # slow=False is already default speed, but we'll speed it up in post-processing
+        tts = gTTS(text=text, lang='en', slow=False, tld='com')
         tts.save(output_path)
-        log(f"Audio saved to: {output_path}")
+
+        # Speed up the audio by 1.25x using ffmpeg
+        temp_path = output_path.replace('.mp3', '_temp.mp3')
+        os.rename(output_path, temp_path)
+
+        speed_cmd = [
+            'ffmpeg', '-y', '-i', temp_path,
+            '-filter:a', 'atempo=1.25',  # 1.25x speed
+            output_path
+        ]
+        subprocess.run(speed_cmd, capture_output=True, check=True)
+        os.remove(temp_path)
+
+        log(f"Audio saved to: {output_path} (1.25x speed)")
         return True
     except Exception as e:
         log(f"--- ERROR: Audio generation failed: {e} ---")
