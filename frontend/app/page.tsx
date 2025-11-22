@@ -127,10 +127,10 @@ export default function Home() {
               accept="application/pdf"
               onChange={handleFileSelect}
               disabled={isUploading}
-              className="absolute inset-0 z-10 h-full w-full opacity-0 cursor-pointer"
+              className="absolute inset-0 z-30 h-full w-full opacity-0 cursor-pointer"
             />
 
-            <div className="relative z-20 flex flex-col items-center gap-6 text-center">
+            <div className="relative z-0 flex flex-col items-center gap-6 text-center pointer-events-none">
               <motion.div
                 animate={isDragging ? { scale: 1.12 } : { scale: 1 }}
                 transition={{ type: 'spring', stiffness: 260, damping: 18 }}

@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import google.genai as genai
 from google.genai import types
+from gtts import gTTS
 
 
 def log(message):
@@ -185,6 +186,44 @@ Make sure clip numbers match the scene order exactly."""
         log(f"--- WARNING: Scene caption generation failed: {e} ---")
 
     return scenes
+
+
+def generate_narration_script(client, scene_description):
+    """Generate natural narration script for a single scene using Gemini."""
+    template = read_prompt_template("generate_narration.txt")
+    prompt = template.format(scene_description=scene_description)
+
+    try:
+        response = call_gemini_with_retries(
+            client,
+            prompt,
+            temperature=0.7,  # Higher temp for more natural speech
+            context_label="Narration script generation",
+        )
+        if response and response.text:
+            # Clean up the response - remove any markdown, quotes, etc.
+            script = response.text.strip()
+            script = script.strip('"').strip("'")
+            return script
+    except Exception as e:
+        log(f"--- WARNING: Narration generation failed: {e} ---")
+        # Fallback: use the scene description directly
+        return scene_description
+
+    return scene_description
+
+
+def generate_audio_from_text(text, output_path):
+    """Convert text to speech using gTTS and save as MP3."""
+    try:
+        log(f"Generating audio: {text[:50]}...")
+        tts = gTTS(text=text, lang='en', slow=False)
+        tts.save(output_path)
+        log(f"Audio saved to: {output_path}")
+        return True
+    except Exception as e:
+        log(f"--- ERROR: Audio generation failed: {e} ---")
+        return False
 
 
 def inject_math_shims(code):
@@ -521,6 +560,47 @@ def render_manim_code(code, output_dir, file_name):
         os.unlink(temp_file_path)
 
 
+def merge_video_with_audio(video_path, audio_path, output_dir):
+    """Merge video clip with audio narration using ffmpeg"""
+    if not audio_path or not os.path.exists(audio_path):
+        log("No audio file to merge, returning original video")
+        return video_path
+
+    # Create output path for narrated video
+    base_name = os.path.basename(video_path).replace(".mp4", "_narrated.mp4")
+    narrated_path = os.path.join(output_dir, base_name)
+
+    try:
+        log(f"Merging audio: {audio_path} with video: {video_path}")
+
+        # FFmpeg command to merge video + audio
+        # -shortest ensures video stops when shortest input (video or audio) ends
+        cmd = [
+            "ffmpeg",
+            "-y",  # Overwrite output
+            "-i", video_path,  # Input video
+            "-i", audio_path,  # Input audio
+            "-c:v", "copy",  # Copy video codec (no re-encoding)
+            "-c:a", "aac",  # Convert audio to AAC
+            "-shortest",  # Stop at shortest stream
+            narrated_path
+        ]
+
+        log(f"Running ffmpeg: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+        if result.returncode != 0:
+            log(f"FFmpeg merge failed: {result.stderr}")
+            return video_path  # Return original on failure
+
+        log(f"Successfully created narrated video: {narrated_path}")
+        return narrated_path
+
+    except Exception as e:
+        log(f"Error merging video with audio: {e}")
+        return video_path  # Return original on error
+
+
 # Thread pool for running blocking operations concurrently
 executor = ThreadPoolExecutor(max_workers=5)
 
@@ -533,8 +613,20 @@ async def asyncify(func, *args):
 async def process_single_clip(i, scene_description, client, output_dir, captions, total_scenes):
     """Process a single clip with retry logic"""
     output_filename = f"clip_{i}.mp4"
+    audio_filename = f"clip_{i}_audio.mp3"
+    audio_path = os.path.join(output_dir, audio_filename)
 
     log(f"[Clip {i+1}] Starting generation: {scene_description[:50]}...")
+
+    # Generate narration script and audio FIRST
+    log(f"[Clip {i+1}] Generating narration...")
+    narration_script = await asyncify(generate_narration_script, client, scene_description)
+    log(f"[Clip {i+1}] Narration: {narration_script[:100]}...")
+
+    audio_generated = await asyncify(generate_audio_from_text, narration_script, audio_path)
+    if not audio_generated:
+        log(f"[Clip {i+1}] WARNING: Audio generation failed, continuing without narration")
+        audio_path = None
 
     code = None
     error = "Initial code generation failed."
@@ -558,10 +650,17 @@ async def process_single_clip(i, scene_description, client, output_dir, captions
 
             if error is None:
                 log(f"[Clip {i+1}] ✓ Rendered successfully")
+
+                # Merge video with audio narration
+                if audio_path:
+                    log(f"[Clip {i+1}] Merging video with narration...")
+                    narrated_video_path = await asyncify(merge_video_with_audio, video_path, audio_path, output_dir)
+                    video_path = narrated_video_path
+
                 print(f"CLIP_SUCCESS: {video_path}", flush=True)
                 if i < len(captions):
                     captions[i]["rendered"] = True
-                return {"success": True, "index": i, "path": video_path}
+                return {"success": True, "index": i, "path": video_path, "audio_path": audio_path}
 
             log(f"[Clip {i+1}] ✗ Attempt {attempt} failed")
 

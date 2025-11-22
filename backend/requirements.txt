@@ -6,8 +6,9 @@ slowapi==0.1.9
 # PDF processing
 pdfplumber==0.11.4
 
-# Google Gemini AI API
+# AI APIs
 google-genai==1.0.0
+gtts==2.5.1
 
 # File upload handling
 python-multipart==0.0.7
