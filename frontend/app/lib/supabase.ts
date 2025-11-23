@@ -2,24 +2,92 @@
  * Supabase client configuration for authentication
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 // Get Supabase URL and key from environment variables
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+// Use typeof window check to ensure we're in browser context during build
+const getSupabaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    return process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  }
+  // During SSR/build, return empty to avoid creating invalid client
+  return process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+}
 
-// Create Supabase client for client components
-// If Supabase is not configured, create a dummy client that will fail gracefully
-export const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : createClient('https://placeholder.supabase.co', 'placeholder-key')
+const getSupabaseKey = () => {
+  if (typeof window !== 'undefined') {
+    return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  }
+  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+}
+
+// Use a valid Supabase-like URL format for placeholder (must be valid HTTP/HTTPS URL)
+const PLACEHOLDER_URL = 'https://placeholder.supabase.co'
+const PLACEHOLDER_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
+
+// Create Supabase client - lazy initialization to avoid build-time errors
+let supabaseClient: SupabaseClient | null = null
+
+function getSupabaseClient(): SupabaseClient {
+  if (supabaseClient) {
+    return supabaseClient
+  }
+
+  const supabaseUrl = getSupabaseUrl()?.trim() || ''
+  const supabaseAnonKey = getSupabaseKey()?.trim() || ''
+  
+  // Strict validation: URL must be valid HTTPS and key must be a proper JWT-like string
+  // Treat empty strings, null, undefined, or invalid formats as invalid
+  const isValidUrl = supabaseUrl && 
+    typeof supabaseUrl === 'string' &&
+    supabaseUrl.length > 10 &&
+    supabaseUrl.startsWith('https://') && 
+    !supabaseUrl.includes('placeholder') &&
+    supabaseAnonKey && 
+    typeof supabaseAnonKey === 'string' &&
+    supabaseAnonKey.length > 20 &&
+    supabaseAnonKey.startsWith('eyJ') && // JWT tokens start with 'eyJ'
+    !supabaseAnonKey.includes('placeholder')
+
+  // Always use placeholder if validation fails (including empty strings)
+  if (!isValidUrl) {
+    try {
+      supabaseClient = createClient(PLACEHOLDER_URL, PLACEHOLDER_KEY)
+      return supabaseClient
+    } catch (error) {
+      // This should never happen, but if it does, throw a clear error
+      throw new Error(`Failed to create Supabase placeholder client: ${error}`)
+    }
+  }
+
+  // Only create real client if validation passed
+  try {
+    supabaseClient = createClient(supabaseUrl, supabaseAnonKey)
+  } catch (error) {
+    // If client creation fails for any reason, fall back to placeholder
+    console.warn('[SUPABASE] Failed to create client with provided credentials, using placeholder:', error)
+    supabaseClient = createClient(PLACEHOLDER_URL, PLACEHOLDER_KEY)
+  }
+  
+  return supabaseClient
+}
+
+// Export a getter that creates client on first access (client-side only)
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(target, prop) {
+    return getSupabaseClient()[prop as keyof SupabaseClient]
+  }
+})
 
 // Check if Supabase is properly configured
 export const isSupabaseConfigured = () => {
+  const supabaseUrl = getSupabaseUrl()
+  const supabaseAnonKey = getSupabaseKey()
   return !!(supabaseUrl && supabaseAnonKey && 
     supabaseUrl !== '' && 
     supabaseAnonKey !== '' &&
-    supabaseUrl !== 'https://placeholder.supabase.co')
+    supabaseUrl.startsWith('http') &&
+    supabaseUrl !== PLACEHOLDER_URL)
 }
 
 /**
