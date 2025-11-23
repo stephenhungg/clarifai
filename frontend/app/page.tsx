@@ -20,14 +20,11 @@ export default function Home() {
   useEffect(() => {
     // Trigger initial animation immediately
     setIsLoaded(true);
+    console.log('[LANDING PAGE] Page loaded, user:', user, 'loading:', authLoading);
   }, []);
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, authLoading, router]);
+  // No redirect - landing page is accessible to everyone
+  // Removed redirect useEffect - landing page should be accessible without login
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -67,6 +64,18 @@ export default function Home() {
   }, []);
 
   const handleUpload = async (file: File) => {
+    // Check if user is authenticated before uploading
+    if (authLoading) {
+      setError('Please wait while we check your authentication...');
+      return;
+    }
+
+    if (!user) {
+      // Redirect to login if not authenticated
+      router.push('/login');
+      return;
+    }
+
     setIsUploading(true);
     setError(null);
 
