@@ -484,6 +484,7 @@ async def generate_video_for_concept(
 async def get_concept_video_status(
     paper_id: str,
     concept_id: str,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
     paper = PaperStorage.get_paper(paper_id, user_id)

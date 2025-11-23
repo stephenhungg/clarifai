@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from ...models.paper import ConceptResponse, Concept
 from ...services.gemini_service import GeminiService
 from ...services.storage import PaperStorage
-from ...core.auth import get_current_user_id
+from ...core.auth import get_current_user_id, verify_api_key
 
 router = APIRouter()
 
@@ -52,6 +52,7 @@ class ClarifyRequest(BaseModel):
 @router.post("/papers/{paper_id}/analyze")
 async def analyze_paper(
     paper_id: str,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
     """
@@ -154,6 +155,7 @@ async def analyze_paper(
 @router.get("/papers/{paper_id}/concepts")
 async def get_paper_concepts(
     paper_id: str,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
     """
@@ -244,6 +246,7 @@ async def delete_concept(
 async def clarify_text(
     paper_id: str,
     request: ClarifyRequest,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
     """
@@ -301,6 +304,7 @@ async def clarify_text(
 @router.get("/papers/{paper_id}/insights")
 async def get_paper_insights(
     paper_id: str,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
     """
@@ -527,6 +531,7 @@ async def generate_additional_concept(
 async def get_code_implementation(
     paper_id: str,
     concept_name: str,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, str]:
     """

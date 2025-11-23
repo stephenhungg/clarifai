@@ -109,6 +109,7 @@ async def upload_pdf(
 
 @router.get("/papers")
 async def list_papers(
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
     """
@@ -138,6 +139,7 @@ async def list_papers(
 @router.get("/papers/{paper_id}")
 async def get_paper(
     paper_id: str,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Paper:
     """
@@ -154,6 +156,7 @@ async def get_paper(
 @router.get("/papers/{paper_id}/status")
 async def get_paper_status(
     paper_id: str,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
     """
@@ -335,6 +338,7 @@ async def serve_pdf(
 @router.delete("/papers/{paper_id}")
 async def delete_paper(
     paper_id: str,
+    api_key: str = Depends(verify_api_key),
     user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, str]:
     """
