@@ -126,10 +126,24 @@ export default function PaperDetailPage() {
     }
   }, [paper?.status]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom only when new messages are actually added
+  const prevMessagesLengthRef = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isAsking]);
+    // Only auto-scroll if:
+    // 1. A new message was actually added (length increased)
+    // 2. User is likely at the bottom (check if scroll is near bottom)
+    const messagesContainer = messagesEndRef.current?.parentElement;
+    if (messages.length > prevMessagesLengthRef.current && messagesContainer) {
+      const isNearBottom = 
+        messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+      
+      // Only scroll if user is near bottom (within 100px) or this is the first message
+      if (isNearBottom || prevMessagesLengthRef.current === 0) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length]); // Only depend on length, not the full array
 
   // Don't auto-scroll logs during generation - let user control their view
   // Removed auto-scroll to prevent forced scrolling beyond view
