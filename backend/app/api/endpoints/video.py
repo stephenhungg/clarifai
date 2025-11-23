@@ -513,3 +513,31 @@ async def get_concept_video_status(
         "logs": concept_video.logs,
         "captions": concept_video.captions,
     }
+
+
+@router.get("/usage-stats")
+async def get_usage_stats(
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
+    """Get video generation usage statistics for the current user"""
+    if not user_id:
+        # Return default stats for unauthenticated users
+        return {
+            "daily_limit": DAILY_VIDEO_LIMIT,
+            "today_count": 0,
+            "remaining_today": DAILY_VIDEO_LIMIT,
+            "currently_generating": 0,
+            "max_concurrent": MAX_CONCURRENT_GENERATIONS,
+        }
+    
+    today_count = PaperStorage.count_user_videos_today(user_id)
+    concurrent_count = PaperStorage.count_user_concurrent_videos(user_id)
+    
+    return {
+        "daily_limit": DAILY_VIDEO_LIMIT,
+        "today_count": today_count,
+        "remaining_today": max(0, DAILY_VIDEO_LIMIT - today_count),
+        "currently_generating": concurrent_count,
+        "max_concurrent": MAX_CONCURRENT_GENERATIONS,
+    }

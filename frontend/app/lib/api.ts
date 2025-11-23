@@ -92,6 +92,14 @@ export interface VideoGenerationStatus {
   video_url?: string;
 }
 
+export interface UsageStats {
+  daily_limit: number;
+  today_count: number;
+  remaining_today: number;
+  currently_generating: number;
+  max_concurrent: number;
+}
+
 // Paper API
 export async function uploadPaper(file: File): Promise<Paper> {
   const formData = new FormData();
@@ -297,6 +305,21 @@ export async function askQuestion(
 
   if (!response.ok) {
     throw new Error('Failed to get answer');
+  }
+
+  return response.json();
+}
+
+// Usage stats API
+export async function getUsageStats(): Promise<UsageStats> {
+  const headers = await getHeaders();
+  const response = await fetch(`${API_URL}/api/usage-stats`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch usage stats: ${response.statusText}`);
   }
 
   return response.json();

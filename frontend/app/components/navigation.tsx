@@ -1,17 +1,43 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, LogOut, User } from 'lucide-react';
+import { Menu, X, LogOut, User, Video } from 'lucide-react';
 import { useAuth } from '../providers/auth-provider';
+import { getUsageStats, UsageStats } from '../lib/api';
 
 export function Navigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [usageStats, setUsageStats] = useState<UsageStats | null>(null);
   const { user, loading, signIn, signOut } = useAuth();
   const router = useRouter();
+
+  // Fetch usage stats when user is logged in
+  useEffect(() => {
+    if (user) {
+      getUsageStats()
+        .then(setUsageStats)
+        .catch((error) => {
+          console.error('Failed to fetch usage stats:', error);
+        });
+      
+      // Refresh stats every 30 seconds
+      const interval = setInterval(() => {
+        getUsageStats()
+          .then(setUsageStats)
+          .catch((error) => {
+            console.error('Failed to fetch usage stats:', error);
+          });
+      }, 30000);
+      
+      return () => clearInterval(interval);
+    } else {
+      setUsageStats(null);
+    }
+  }, [user]);
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -62,6 +88,14 @@ export function Navigation() {
               <div className="h-4 w-px bg-white/20" />
               {user ? (
                 <>
+                  {usageStats && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary border border-white/10 rounded-full bg-white/5">
+                      <Video className="w-3.5 h-3.5" />
+                      <span className="whitespace-nowrap">
+                        {usageStats.remaining_today}/{usageStats.daily_limit} videos
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary">
                     <User className="w-3.5 h-3.5" />
                     <span className="max-w-[120px] truncate">{user.email}</span>
@@ -168,6 +202,21 @@ export function Navigation() {
                     <div className="mt-auto pt-6 border-t border-white/10">
                       {user ? (
                         <>
+                          {usageStats && (
+                            <div className="px-6 py-3 mb-3 rounded-2xl border border-white/10 bg-white/5 flex items-center gap-3">
+                              <Video className="w-4 h-4 text-text-secondary" />
+                              <div className="flex-1">
+                                <div className="text-sm text-text-secondary">
+                                  {usageStats.remaining_today} of {usageStats.daily_limit} videos remaining today
+                                </div>
+                                {usageStats.currently_generating > 0 && (
+                                  <div className="text-xs text-text-tertiary mt-0.5">
+                                    {usageStats.currently_generating} generating
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <div className="px-6 py-3 mb-3 rounded-2xl border border-white/10 bg-white/5 flex items-center gap-3">
                             <User className="w-4 h-4 text-text-secondary" />
                             <span className="text-sm text-text-secondary truncate">{user.email}</span>

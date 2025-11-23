@@ -81,13 +81,36 @@ export const supabase = new Proxy({} as SupabaseClient, {
 
 // Check if Supabase is properly configured
 export const isSupabaseConfigured = () => {
-  const supabaseUrl = getSupabaseUrl()
-  const supabaseAnonKey = getSupabaseKey()
-  return !!(supabaseUrl && supabaseAnonKey && 
-    supabaseUrl !== '' && 
-    supabaseAnonKey !== '' &&
-    supabaseUrl.startsWith('http') &&
-    supabaseUrl !== PLACEHOLDER_URL)
+  // Directly read from process.env to ensure we get the actual values
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()
+  const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim()
+  
+  // Use the same strict validation as getSupabaseClient()
+  const isValid = supabaseUrl && 
+    typeof supabaseUrl === 'string' &&
+    supabaseUrl.length > 10 &&
+    supabaseUrl.startsWith('https://') && 
+    !supabaseUrl.includes('placeholder') &&
+    supabaseAnonKey && 
+    typeof supabaseAnonKey === 'string' &&
+    supabaseAnonKey.length > 20 &&
+    supabaseAnonKey.startsWith('eyJ') && // JWT tokens start with 'eyJ'
+    !supabaseAnonKey.includes('placeholder')
+  
+  // Debug logging (only in browser to avoid build errors)
+  if (typeof window !== 'undefined') {
+    console.log('[SUPABASE] isSupabaseConfigured check:', {
+      hasUrl: !!supabaseUrl,
+      urlLength: supabaseUrl.length,
+      urlStartsWithHttps: supabaseUrl.startsWith('https://'),
+      hasKey: !!supabaseAnonKey,
+      keyLength: supabaseAnonKey.length,
+      keyStartsWithEyJ: supabaseAnonKey.startsWith('eyJ'),
+      isValid
+    })
+  }
+  
+  return isValid
 }
 
 /**
