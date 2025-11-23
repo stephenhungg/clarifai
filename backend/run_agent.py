@@ -560,8 +560,44 @@ def render_manim_code(code, output_dir, file_name):
         os.unlink(temp_file_path)
 
 
+def get_audio_duration(audio_path):
+    """Get the duration of an audio file in seconds using ffprobe"""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            audio_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        duration = float(result.stdout.strip())
+        return duration
+    except Exception as e:
+        log(f"Error getting audio duration: {e}")
+        return None
+
+
+def get_video_duration(video_path):
+    """Get the duration of a video file in seconds using ffprobe"""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        duration = float(result.stdout.strip())
+        return duration
+    except Exception as e:
+        log(f"Error getting video duration: {e}")
+        return None
+
+
 def merge_video_with_audio(video_path, audio_path, output_dir):
-    """Merge video clip with audio narration using ffmpeg"""
+    """Merge video clip with audio narration using ffmpeg, ensuring video matches audio duration"""
     if not audio_path or not os.path.exists(audio_path):
         log("No audio file to merge, returning original video")
         return video_path
@@ -573,18 +609,63 @@ def merge_video_with_audio(video_path, audio_path, output_dir):
     try:
         log(f"Merging audio: {audio_path} with video: {video_path}")
 
-        # FFmpeg command to merge video + audio
-        # -shortest ensures video stops when shortest input (video or audio) ends
-        cmd = [
-            "ffmpeg",
-            "-y",  # Overwrite output
-            "-i", video_path,  # Input video
-            "-i", audio_path,  # Input audio
-            "-c:v", "copy",  # Copy video codec (no re-encoding)
-            "-c:a", "aac",  # Convert audio to AAC
-            "-shortest",  # Stop at shortest stream
-            narrated_path
-        ]
+        # Get durations
+        audio_duration = get_audio_duration(audio_path)
+        video_duration = get_video_duration(video_path)
+        
+        if audio_duration is None:
+            log("Could not determine audio duration, using -shortest")
+            # Fallback to shortest if we can't get audio duration
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-shortest",
+                narrated_path
+            ]
+        elif video_duration is None:
+            log("Could not determine video duration, using -shortest")
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-shortest",
+                narrated_path
+            ]
+        elif video_duration < audio_duration:
+            # Video is shorter than audio - loop video to match audio duration
+            log(f"Video ({video_duration:.2f}s) is shorter than audio ({audio_duration:.2f}s). Looping video to match.")
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-stream_loop", "-1",  # Loop video indefinitely
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "libx264",  # Need to re-encode to loop
+                "-c:a", "aac",
+                "-t", str(audio_duration),  # Set output duration to audio length
+                "-shortest",  # Safety: stop at shortest (should be audio)
+                narrated_path
+            ]
+        else:
+            # Video is longer or equal - use shortest to match audio
+            log(f"Video ({video_duration:.2f}s) is longer than or equal to audio ({audio_duration:.2f}s). Using audio duration.")
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-t", str(audio_duration),  # Trim to audio duration
+                narrated_path
+            ]
 
         log(f"Running ffmpeg: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)

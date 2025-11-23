@@ -159,10 +159,14 @@ export async function signOut(): Promise<void> {
  * @param redirectTo Optional redirect URL after successful login
  */
 export async function signInWithGoogle(redirectTo?: string): Promise<void> {
+  // Use environment variable for site URL if available, otherwise use current origin
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+  const finalRedirectTo = redirectTo || `${siteUrl}/papers`
+  
   await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: redirectTo || `${window.location.origin}/papers`,
+      redirectTo: finalRedirectTo,
     },
   })
 }

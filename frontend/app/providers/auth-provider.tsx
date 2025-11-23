@@ -58,10 +58,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Supabase is not configured')
     }
     try {
+      // Use environment variable for site URL if available, otherwise use current origin
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+      const redirectTo = `${siteUrl}/papers`
+      
+      console.log('[AUTH] Signing in with redirect URL:', redirectTo)
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/papers`,
+          redirectTo: redirectTo,
         },
       })
       if (error) {
