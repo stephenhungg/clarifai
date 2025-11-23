@@ -129,13 +129,13 @@ export default function Home() {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 40, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 1.0, delay: 2.3, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 2.3, ease: [0.16, 1, 0.3, 1] }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`group relative rounded-3xl border border-white/20 bg-black/40 backdrop-blur-3xl shadow-2xl p-14 transition-all duration-300 ${
+            className={`group relative rounded-3xl border border-white/20 bg-black/40 backdrop-blur-3xl shadow-2xl p-14 transition-[box-shadow,background-color,border-color,transform] duration-300 ${
               isDragging ? 'ring-2 ring-white/50 scale-[0.99] bg-black/50' : 'hover:ring-2 hover:ring-white/30 hover:bg-black/50 hover:shadow-[0_0_80px_rgba(255,255,255,0.1)]'
             } ${isUploading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}
           >
