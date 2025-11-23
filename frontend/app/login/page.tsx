@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Navigation } from '../components/navigation'
 import { ShaderCanvas } from '../components/shader-canvas'
-import { isSupabaseConfigured } from '../lib/supabase'
+import { isSupabaseConfigured } from '@/app/lib/supabase'
 
 export default function LoginPage() {
   const { user, loading, signIn } = useAuth()
