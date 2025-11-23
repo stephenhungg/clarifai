@@ -361,6 +361,29 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
             PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
 
 
+async def get_video_duration(video_path: str) -> float:
+    """Get video duration in seconds using ffprobe"""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode == 0:
+            return float(stdout.decode().strip())
+    except Exception as e:
+        print(f"Error getting video duration: {e}")
+    return 0.0
+
+
 async def stitch_clips_simple(
     file_prefix: str, clip_paths: List[str], videos_dir: str
 ) -> Optional[str]:
@@ -369,7 +392,8 @@ async def stitch_clips_simple(
 
     os.makedirs(videos_dir, exist_ok=True)
 
-    output_path = os.path.join(videos_dir, f"{file_prefix}_final.mp4")
+    # First, concatenate clips without fade
+    temp_output_path = os.path.join(videos_dir, f"{file_prefix}_temp.mp4")
     concat_file_path = os.path.join(videos_dir, f"{file_prefix}_concat.txt")
 
     with open(concat_file_path, "w", encoding="utf-8") as f:
@@ -378,7 +402,8 @@ async def stitch_clips_simple(
             safe_path = str(path).replace("\\", "/").replace("'", "'\\''")
             f.write(f"file '{safe_path}'\n")
 
-    cmd = [
+    # Step 1: Concatenate clips
+    concat_cmd = [
         "ffmpeg",
         "-y",
         "-f",
@@ -389,24 +414,75 @@ async def stitch_clips_simple(
         concat_file_path,
         "-c",
         "copy",
-        output_path,
+        temp_output_path,
     ]
 
     process = await asyncio.create_subprocess_exec(
-        *cmd,
+        *concat_cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await process.communicate()
 
     if process.returncode != 0:
-        print("--- FFMPEG STITCHING FAILED ---")
+        print("--- FFMPEG CONCATENATION FAILED ---")
         print(f"STDOUT:\n{stdout.decode()}")
         print(f"STDERR:\n{stderr.decode()}")
+        if os.path.exists(concat_file_path):
+            os.remove(concat_file_path)
         return None
 
     os.remove(concat_file_path)
-    return output_path
+
+    # Step 2: Get video duration and add fade out
+    duration = await get_video_duration(temp_output_path)
+    fade_duration = 1.0  # Fade out over 1 second
+    fade_start = max(0.0, duration - fade_duration)
+
+    if duration > fade_duration:
+        # Apply fade out to the final video
+        output_path = os.path.join(videos_dir, f"{file_prefix}_final.mp4")
+        fade_cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", temp_output_path,
+            "-vf", f"fade=t=out:st={fade_start}:d={fade_duration}",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "23",
+            "-c:a", "copy",  # Copy audio without re-encoding
+            output_path,
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *fade_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            print("--- FFMPEG FADE OUT FAILED ---")
+            print(f"STDOUT:\n{stdout.decode()}")
+            print(f"STDERR:\n{stderr.decode()}")
+            # Fallback: use temp file without fade
+            if os.path.exists(temp_output_path):
+                os.rename(temp_output_path, output_path)
+                return output_path
+            return None
+
+        # Clean up temp file
+        if os.path.exists(temp_output_path):
+            os.remove(temp_output_path)
+        
+        return output_path
+    else:
+        # Video too short for fade, just rename temp file
+        output_path = os.path.join(videos_dir, f"{file_prefix}_final.mp4")
+        if os.path.exists(temp_output_path):
+            os.rename(temp_output_path, output_path)
+            return output_path
+        return None
 
 
 @router.post("/papers/{paper_id}/concepts/{concept_id}/generate-video")

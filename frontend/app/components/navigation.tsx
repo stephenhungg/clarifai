@@ -79,7 +79,7 @@ export function Navigation() {
           </Link>
           <Link
             href="/"
-            className="ml-1 px-5 py-1.5 text-sm font-medium text-black bg-white rounded-full transition-all duration-300 hover:shadow-[0_20px_45px_rgba(255,255,255,0.25)] hover:-translate-y-0.5"
+            className="ml-1 px-5 py-1.5 text-sm font-medium text-white bg-white/15 border border-white/25 rounded-full transition-all duration-300 hover:bg-white/20 hover:border-white/35 hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:-translate-y-0.5"
           >
             Upload
           </Link>

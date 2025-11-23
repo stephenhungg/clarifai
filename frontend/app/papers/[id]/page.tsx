@@ -131,10 +131,8 @@ export default function PaperDetailPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isAsking]);
 
-  // Auto-scroll logs when new log messages arrive
-  useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [videoLogs]);
+  // Don't auto-scroll logs during generation - let user control their view
+  // Removed auto-scroll to prevent forced scrolling beyond view
 
   // Fake progress bar that smoothly increases to 99% over ~30 seconds
   useEffect(() => {
@@ -341,7 +339,10 @@ export default function PaperDetailPage() {
     handleGenerateVideo(concept.id);
   };
 
-  // Automatically load the latest ready video
+  // Track previous concept states to detect when video becomes ready
+  const prevConceptsRef = useRef<Concept[]>([]);
+  
+  // Automatically load the latest ready video and scroll to it when generation completes
   useEffect(() => {
     const readyConcept = concepts.find(
       (concept) => concept.video_status === 'ready' && concept.video_url
@@ -351,16 +352,34 @@ export default function PaperDetailPage() {
       if (!generatingConceptId) {
         setCurrentVideo(null);
       }
+      prevConceptsRef.current = concepts;
       return;
     }
 
     const videoData = createVideoData(readyConcept);
+    
+    // Check if this concept just transitioned from generating to ready
+    const prevConcept = prevConceptsRef.current.find(c => c.id === readyConcept.id);
+    const justBecameReady = prevConcept?.video_status === 'generating' && readyConcept.video_status === 'ready';
+    const wasGenerating = generatingConceptId === readyConcept.id;
+    
     setCurrentVideo((prev) => {
+      // If this is a new video or the URL changed, update it
       if (!prev || prev.id !== videoData.id || prev.url !== videoData.url) {
+        // If we were just generating this video or it just became ready, scroll to it
+        if (justBecameReady || wasGenerating) {
+          // Small delay to ensure video element is rendered
+          setTimeout(() => {
+            videoPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 500);
+        }
         return videoData;
       }
       return prev;
     });
+    
+    // Update previous concepts for next comparison
+    prevConceptsRef.current = concepts;
   }, [concepts, generatingConceptId]);
 
   // Connect to WebSocket when video generation starts
