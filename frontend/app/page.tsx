@@ -7,9 +7,11 @@ import { Upload } from 'lucide-react';
 import { Navigation } from './components/navigation';
 import { ShaderCanvas } from './components/shader-canvas';
 import { uploadPaper } from './lib/api';
+import { useAuth } from './providers/auth-provider';
 
 export default function Home() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +21,13 @@ export default function Home() {
     // Trigger initial animation immediately
     setIsLoaded(true);
   }, []);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();

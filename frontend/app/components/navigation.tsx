@@ -2,19 +2,38 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, LogOut, User } from 'lucide-react';
+import { useAuth } from '../providers/auth-provider';
 
 export function Navigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const { user, loading, signIn, signOut } = useAuth();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      router.push('/');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      // Still redirect even if there's an error
+      router.push('/');
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
 
   return (
     <>
       {/* Desktop: Floating Pill Nav - Centered */}
       <div className="fixed top-6 left-0 right-0 z-50 hidden md:flex justify-center pointer-events-none">
-        <motion.nav
-          initial={{ y: -20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
+    <motion.nav
+      initial={{ y: -20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
           className="pointer-events-auto"
         >
@@ -23,8 +42,8 @@ export function Navigation() {
             href="/"
             className="px-4 py-1.5 text-sm font-light tracking-tight text-white transition-colors hover:text-text-secondary rounded-full hover:bg-white/5"
           >
-            ClarifAI
-          </Link>
+          ClarifAI
+        </Link>
           <div className="h-4 w-px bg-white/20" />
           <Link
             href="/papers"
@@ -38,7 +57,39 @@ export function Navigation() {
           >
             Upload
           </Link>
-          </div>
+          {!loading && (
+            <>
+              <div className="h-4 w-px bg-white/20" />
+              {user ? (
+                <>
+                  <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary">
+                    <User className="w-3.5 h-3.5" />
+                    <span className="max-w-[120px] truncate">{user.email}</span>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                    className="px-4 py-1.5 text-sm text-text-secondary hover:text-white transition-colors rounded-full hover:bg-white/5 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Sign out"
+                  >
+                    {isSigningOut ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <LogOut className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  className="px-4 py-1.5 text-sm text-text-secondary hover:text-white transition-colors rounded-full hover:bg-white/5"
+                >
+                  Sign in
+                </Link>
+              )}
+            </>
+          )}
+        </div>
         </motion.nav>
       </div>
 
@@ -97,7 +148,7 @@ export function Navigation() {
                   </button>
                 </div>
 
-                <nav className="flex flex-col gap-4">
+                <nav className="flex flex-col gap-4 flex-1">
                   <Link
                     href="/"
                     onClick={() => setIsMenuOpen(false)}
@@ -112,6 +163,42 @@ export function Navigation() {
                   >
                     <span className="text-sm font-medium">Library</span>
                   </Link>
+                  
+                  {!loading && (
+                    <div className="mt-auto pt-6 border-t border-white/10">
+                      {user ? (
+                        <>
+                          <div className="px-6 py-3 mb-3 rounded-2xl border border-white/10 bg-white/5 flex items-center gap-3">
+                            <User className="w-4 h-4 text-text-secondary" />
+                            <span className="text-sm text-text-secondary truncate">{user.email}</span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              handleSignOut();
+                              setIsMenuOpen(false);
+                            }}
+                            disabled={isSigningOut}
+                            className="w-full px-6 py-3 rounded-2xl border border-white/10 bg-white/5 text-text-primary hover:bg-white/10 hover:border-white/20 transition-all duration-300 flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isSigningOut ? (
+                              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <LogOut className="w-4 h-4" />
+                            )}
+                            <span className="text-sm font-medium">{isSigningOut ? 'Signing out...' : 'Sign out'}</span>
+                          </button>
+                        </>
+                      ) : (
+                        <Link
+                          href="/login"
+                          onClick={() => setIsMenuOpen(false)}
+                          className="block px-6 py-3 rounded-2xl border border-white/10 bg-white/5 text-text-primary hover:bg-white/10 hover:border-white/20 transition-all duration-300 text-center"
+                        >
+                          <span className="text-sm font-medium">Sign in</span>
+                        </Link>
+                      )}
+                    </div>
+                  )}
                 </nav>
               </div>
             </motion.div>

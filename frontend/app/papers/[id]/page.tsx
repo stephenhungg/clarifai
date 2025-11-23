@@ -30,6 +30,41 @@ function fixAbstractSpacing(text: string): string {
   return fixed;
 }
 
+// Render scene guide (captions) for a video
+function renderSceneGuide(video: VideoModalData | null, mode: 'inline' | 'modal') {
+  if (!video || !video.captions || video.captions.length === 0) {
+    return (
+      <div className="text-sm text-text-tertiary">
+        No captions available for this video.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {video.captions.map((caption, index) => (
+        <div
+          key={index}
+          className={`rounded-lg border ${
+            mode === 'modal'
+              ? 'border-white/10 bg-white/5 p-3'
+              : 'border-white/5 bg-white/[0.02] p-2.5'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-semibold text-text-secondary min-w-[2rem]">
+              {caption.clip ?? index + 1}
+            </span>
+            <p className="text-sm text-text-primary leading-relaxed flex-1">
+              {caption.text || 'No description available'}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== 'undefined'
@@ -535,44 +570,6 @@ export default function PaperDetailPage() {
       </div>
     );
   }
-
-  const renderSceneGuide = (video: VideoModalData | null, context: 'inline' | 'modal') => {
-    if (!video || !video.captions || video.captions.length === 0) {
-      return (
-        <p className="text-xs text-text-tertiary italic">
-          No captions available for this video.
-        </p>
-      );
-    }
-
-    return (
-      <div className="space-y-2">
-        {video.captions.map((caption, idx) => (
-          <div
-            key={idx}
-            className={`rounded-lg p-3 ${
-              caption.rendered
-                ? 'bg-white/5 border border-white/10'
-                : 'bg-white/[0.02] border border-white/5'
-            }`}
-          >
-            <div className="flex items-start gap-2">
-              <span className={`flex-shrink-0 text-xs font-mono ${
-                caption.rendered ? 'text-text-secondary' : 'text-text-tertiary'
-              }`}>
-                {String(caption.clip).padStart(2, '0')}
-              </span>
-              <p className={`text-xs ${
-                caption.rendered ? 'text-text-secondary' : 'text-text-tertiary'
-              }`}>
-                {caption.text}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">

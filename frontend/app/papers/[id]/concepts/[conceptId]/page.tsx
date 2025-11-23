@@ -97,8 +97,8 @@ export default function ConceptDetailPage() {
           setConcept(
             (prev) =>
               prev && {
-                ...prev,
-                video_status: 'ready',
+            ...prev,
+            video_status: 'ready',
                 video_url: resolveVideoUrl(status.video_url),
               }
           );
