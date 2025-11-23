@@ -134,7 +134,7 @@ export default function PaperDetailPage() {
   // Don't auto-scroll logs during generation - let user control their view
   // Removed auto-scroll to prevent forced scrolling beyond view
 
-  // Fake progress bar that smoothly increases to 99% over ~30 seconds
+  // Fake progress bar that smoothly increases to 99% over ~90 seconds
   useEffect(() => {
     if (!generatingConceptId) {
       setFakeProgress(0);
@@ -142,7 +142,7 @@ export default function PaperDetailPage() {
     }
 
     const startTime = Date.now();
-    const duration = 30000; // 30 seconds to reach 99%
+    const duration = 90000; // 90 seconds to reach 99%
     const maxProgress = 99;
 
     const interval = setInterval(() => {
