@@ -93,6 +93,7 @@ class Concept(Base):
     page_numbers = Column(ARRAY(Integer), default=list)
     text_snippets = Column(ARRAY(Text), default=list)
     related_concepts = Column(ARRAY(String), default=list)
+    code = Column(Text, nullable=True)  # Generated Python code implementation
 
     # Relationships
     paper = relationship("Paper", back_populates="concepts")

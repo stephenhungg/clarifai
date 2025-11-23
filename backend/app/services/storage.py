@@ -115,7 +115,8 @@ def _db_to_pydantic_paper(db_paper: DBPaper) -> PydanticPaper:
             concept_type=db_concept.concept_type,
             page_numbers=db_concept.page_numbers or [],
             text_snippets=db_concept.text_snippets or [],
-            related_concepts=db_concept.related_concepts or []
+            related_concepts=db_concept.related_concepts or [],
+            code=db_concept.code  # Include generated code if it exists
         ))
     
     # Load concept videos
@@ -274,6 +275,7 @@ class PaperStorage:
                             db_concept.page_numbers = pydantic_concept.page_numbers or []
                             db_concept.text_snippets = pydantic_concept.text_snippets or []
                             db_concept.related_concepts = pydantic_concept.related_concepts or []
+                            db_concept.code = pydantic_concept.code  # Update code if it exists
                         else:
                             # Create
                             db_concept = DBConcept(
@@ -285,7 +287,8 @@ class PaperStorage:
                                 concept_type=pydantic_concept.concept_type,
                                 page_numbers=pydantic_concept.page_numbers or [],
                                 text_snippets=pydantic_concept.text_snippets or [],
-                                related_concepts=pydantic_concept.related_concepts or []
+                                related_concepts=pydantic_concept.related_concepts or [],
+                                code=pydantic_concept.code  # Include code if it exists
                             )
                             db.add(db_concept)
                         existing_concept_ids.discard(str(pydantic_concept.id))

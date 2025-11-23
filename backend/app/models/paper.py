@@ -43,6 +43,7 @@ class Concept(BaseModel):
     text_snippets: List[str] = []
     related_concepts: List[str] = []
     concept_type: str = "conceptual"
+    code: Optional[str] = None  # Generated Python code implementation
     
     def model_dump(self, **kwargs):
         """Override model_dump to use 'type' instead of 'concept_type' for frontend compatibility"""

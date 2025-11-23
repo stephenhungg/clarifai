@@ -178,6 +178,7 @@ async def get_paper_concepts(
             "text_snippets": concept.text_snippets,
             "related_concepts": concept.related_concepts,
             "type": concept.concept_type,
+            "code": concept.code if hasattr(concept, 'code') else None,  # Include code if it exists
         }
 
         # Get video status from concept_videos if it exists
@@ -554,6 +555,17 @@ async def get_code_implementation(
         code = await gemini_service.generate_python_implementation(
             concept.name, concept.description
         )
+        
+        # Save the generated code to the concept
+        concept.code = code
+        
+        # Save the updated paper with the code
+        if paper.user_id:
+            PaperStorage.save_paper(paper, paper.user_id)
+        else:
+            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+        
+        print(f"Code generated and saved for concept: {decoded_concept_name}")
         return {"code": code}
     except Exception as e:
         print(f"Code generation failed: {e}")
