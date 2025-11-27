@@ -318,19 +318,19 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
         clips_dir = None
         output_dir = None
         try:
-        await log("Handing off to agent for video generation...")
+            await log("Handing off to agent for video generation...")
 
-        # In Docker: WORKDIR=/app, so use /app/clips and /app/videos
-        # In dev: backend/app/api/endpoints/video.py -> go up to backend/ root
-        current_file = Path(__file__).resolve()
+            # In Docker: WORKDIR=/app, so use /app/clips and /app/videos
+            # In dev: backend/app/api/endpoints/video.py -> go up to backend/ root
+            current_file = Path(__file__).resolve()
 
-        # Try to find backend root
-        # From backend/app/api/endpoints/video.py -> backend/app/api/endpoints -> backend/app/api -> backend/app -> backend
-        backend_root = current_file.parents[3]
+            # Try to find backend root
+            # From backend/app/api/endpoints/video.py -> backend/app/api/endpoints -> backend/app/api -> backend/app -> backend
+            backend_root = current_file.parents[3]
 
-        # In Docker, we might be at /app instead of backend
-        if not (backend_root / "app").exists() and Path("/app").exists():
-            backend_root = Path("/app")
+            # In Docker, we might be at /app instead of backend
+            if not (backend_root / "app").exists() and Path("/app").exists():
+                backend_root = Path("/app")
 
             clips_dir = backend_root / "clips"
             videos_dir = backend_root / "videos"
