@@ -18,6 +18,10 @@ from ...services.storage import PaperStorage
 DAILY_VIDEO_LIMIT = 5  # Free tier: 5 videos per day per user
 MAX_CONCURRENT_GENERATIONS = 3  # Max 3 videos generating at once per user
 
+# Global semaphore to limit total concurrent video generations (prevents memory exhaustion)
+# Set to 2 to prevent Railway memory issues - Manim is very memory-intensive
+GLOBAL_VIDEO_SEMAPHORE = asyncio.Semaphore(2)
+
 # Vercel Blob storage (optional, falls back to local storage)
 try:
     from vercel_blob import put
@@ -255,24 +259,28 @@ async def upload_to_vercel_blob(file_path: str, file_name: str) -> Optional[str]
 
 
 async def generate_video_background(paper_id: str, concept_id: str, concept: Concept):
-    # Skip ownership check for background tasks
-    paper = PaperStorage.get_paper(paper_id, skip_ownership_check=True)
-    if not paper:
-        return
-    concept_video = paper.concept_videos.get(concept_id)
-    if not concept_video:
-        return
+    # Acquire semaphore to limit global concurrent video generations
+    async with GLOBAL_VIDEO_SEMAPHORE:
+        # Skip ownership check for background tasks
+        paper = PaperStorage.get_paper(paper_id, skip_ownership_check=True)
+        if not paper:
+            return
+        concept_video = paper.concept_videos.get(concept_id)
+        if not concept_video:
+            return
 
-    async def log(message: str):
-        print(message)
-        log_entry = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
-        concept_video.logs.append(log_entry)
-        if manager:
-            await manager.send_log(
-                paper_id, json.dumps({"type": "log", "message": log_entry})
-            )
+        async def log(message: str):
+            print(message)
+            log_entry = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
+            concept_video.logs.append(log_entry)
+            if manager:
+                await manager.send_log(
+                    paper_id, json.dumps({"type": "log", "message": log_entry})
+                )
 
-    try:
+        clips_dir = None
+        output_dir = None
+        try:
         await log("Handing off to agent for video generation...")
 
         # In Docker: WORKDIR=/app, so use /app/clips and /app/videos
@@ -287,78 +295,107 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
         if not (backend_root / "app").exists() and Path("/app").exists():
             backend_root = Path("/app")
 
-        clips_dir = backend_root / "clips"
-        videos_dir = backend_root / "videos"
+            clips_dir = backend_root / "clips"
+            videos_dir = backend_root / "videos"
 
-        output_dir = clips_dir / f"{paper_id}_{concept_id}"
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"[VIDEO] Using clips_dir: {clips_dir}, videos_dir: {videos_dir}")
+            output_dir = clips_dir / f"{paper_id}_{concept_id}"
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"[VIDEO] Using clips_dir: {clips_dir}, videos_dir: {videos_dir}")
 
-        result = await run_agent_script(
-            paper_id, concept.name, concept.description, str(output_dir)
-        )
+            result = await run_agent_script(
+                paper_id, concept.name, concept.description, str(output_dir)
+            )
 
-        clip_paths = result.get("clip_paths", [])
-        concept_video.captions = result.get("captions", [])
+            clip_paths = result.get("clip_paths", [])
+            concept_video.captions = result.get("captions", [])
 
-        if not clip_paths:
-            await log("Agent did not produce any successful video clips.")
+            if not clip_paths:
+                await log("Agent did not produce any successful video clips.")
+                concept_video.status = VideoStatus.FAILED
+                if paper.user_id:
+                    PaperStorage.save_paper(paper, paper.user_id)
+                else:
+                    PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+                return
+
+            await log(
+                "Agent finished. Stitching " + str(len(clip_paths)) + " successful clips..."
+            )
+
+            final_video_path = await stitch_clips_simple(
+                f"{paper_id}_{concept_id}", clip_paths, str(videos_dir)
+            )
+
+            if final_video_path:
+                file_name = os.path.basename(final_video_path)
+                print(f"[VIDEO] Final video created at: {final_video_path}")
+                print(f"[VIDEO] File exists: {os.path.exists(final_video_path)}")
+                file_size = os.path.getsize(final_video_path) if os.path.exists(final_video_path) else 0
+                print(f"[VIDEO] File size: {file_size / (1024*1024):.2f} MB" if file_size else "N/A")
+
+                # Try to upload to Vercel Blob first
+                blob_url = await upload_to_vercel_blob(final_video_path, file_name)
+
+                if blob_url:
+                    # Use Vercel Blob URL - delete local file after successful upload
+                    accessible_path = blob_url
+                    await log(f"Video uploaded to Vercel Blob: {blob_url}")
+                    print(f"[VIDEO] Using Vercel Blob URL: {blob_url}")
+                    
+                    # Delete local file to free up disk space
+                    try:
+                        if os.path.exists(final_video_path):
+                            os.remove(final_video_path)
+                            await log(f"Deleted local video file to free disk space: {file_name}")
+                            print(f"[VIDEO] Deleted local file: {final_video_path}")
+                    except Exception as delete_err:
+                        print(f"[VIDEO] Warning: Failed to delete local file: {delete_err}")
+                else:
+                    # Fallback to local storage (keep file if Vercel Blob upload failed)
+                    accessible_path = f"/api/videos/{file_name}"
+                    await log(f"Video available locally: {accessible_path}")
+                    print(f"[VIDEO] Using local path: {accessible_path}")
+
+                concept_video.video_path = accessible_path
+                concept_video.status = VideoStatus.COMPLETED
+                if paper.user_id:
+                    PaperStorage.save_paper(paper, paper.user_id)
+                else:
+                    PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+            else:
+                await log("Stitching failed.")
+                concept_video.status = VideoStatus.FAILED
+                if paper.user_id:
+                    PaperStorage.save_paper(paper, paper.user_id)
+                else:
+                    PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+            
+            # Cleanup: Remove clips directory after successful video generation
+            if output_dir and os.path.exists(output_dir):
+                try:
+                    import shutil
+                    shutil.rmtree(output_dir)
+                    await log(f"Cleaned up clips directory: {output_dir}")
+                    print(f"[VIDEO] Cleaned up clips directory: {output_dir}")
+                except Exception as cleanup_err:
+                    print(f"[VIDEO] Warning: Failed to cleanup clips directory: {cleanup_err}")
+
+        except Exception as e:
+            await log(f"An unexpected error occurred: {e}")
             concept_video.status = VideoStatus.FAILED
             if paper.user_id:
                 PaperStorage.save_paper(paper, paper.user_id)
             else:
                 PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
-            return
-
-        await log(
-            "Agent finished. Stitching " + str(len(clip_paths)) + " successful clips..."
-        )
-
-        final_video_path = await stitch_clips_simple(
-            f"{paper_id}_{concept_id}", clip_paths, str(videos_dir)
-        )
-
-        if final_video_path:
-            file_name = os.path.basename(final_video_path)
-            print(f"[VIDEO] Final video created at: {final_video_path}")
-            print(f"[VIDEO] File exists: {os.path.exists(final_video_path)}")
-            print(f"[VIDEO] File size: {os.path.getsize(final_video_path) if os.path.exists(final_video_path) else 'N/A'}")
-
-            # Try to upload to Vercel Blob first
-            blob_url = await upload_to_vercel_blob(final_video_path, file_name)
-
-            if blob_url:
-                # Use Vercel Blob URL
-                accessible_path = blob_url
-                await log(f"Video uploaded to Vercel Blob: {blob_url}")
-                print(f"[VIDEO] Using Vercel Blob URL: {blob_url}")
-            else:
-                # Fallback to local storage
-                accessible_path = f"/api/videos/{file_name}"
-                await log(f"Video available locally: {accessible_path}")
-                print(f"[VIDEO] Using local path: {accessible_path}")
-
-            concept_video.video_path = accessible_path
-            concept_video.status = VideoStatus.COMPLETED
-            if paper.user_id:
-                PaperStorage.save_paper(paper, paper.user_id)
-            else:
-                PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
-        else:
-            await log("Stitching failed.")
-            concept_video.status = VideoStatus.FAILED
-            if paper.user_id:
-                PaperStorage.save_paper(paper, paper.user_id)
-            else:
-                PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
-
-    except Exception as e:
-        await log(f"An unexpected error occurred: {e}")
-        concept_video.status = VideoStatus.FAILED
-        if paper.user_id:
-            PaperStorage.save_paper(paper, paper.user_id)
-        else:
-            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+            
+            # Cleanup on error too
+            if output_dir and os.path.exists(output_dir):
+                try:
+                    import shutil
+                    shutil.rmtree(output_dir)
+                    print(f"[VIDEO] Cleaned up clips directory after error: {output_dir}")
+                except Exception as cleanup_err:
+                    print(f"[VIDEO] Warning: Failed to cleanup clips directory: {cleanup_err}")
 
 
 async def get_video_duration(video_path: str) -> float:
@@ -471,9 +508,13 @@ async def stitch_clips_simple(
                 return output_path
             return None
 
-        # Clean up temp file
+        # Clean up temp file after fade processing
         if os.path.exists(temp_output_path):
-            os.remove(temp_output_path)
+            try:
+                os.remove(temp_output_path)
+                print(f"[VIDEO] Cleaned up temp file: {temp_output_path}")
+            except Exception as e:
+                print(f"[VIDEO] Warning: Failed to delete temp file: {e}")
         
         return output_path
     else:

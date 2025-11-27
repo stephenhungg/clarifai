@@ -778,7 +778,7 @@ async def process_single_clip(i, scene_description, client, output_dir, captions
     return {"success": False, "index": i}
 
 
-async def process_clips_in_batches(scenes, client, output_dir, captions, batch_size=3):
+async def process_clips_in_batches(scenes, client, output_dir, captions, batch_size=2):
     """Process clips in batches to avoid overwhelming the system"""
     all_results = []
     total_scenes = len(scenes)
