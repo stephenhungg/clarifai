@@ -23,11 +23,8 @@ MAX_CONCURRENT_GENERATIONS = 3  # Max 3 videos generating at once per user
 GLOBAL_VIDEO_SEMAPHORE = asyncio.Semaphore(2)
 
 # Vercel Blob storage (optional, falls back to local storage)
-try:
-    from vercel_blob import put
-    VERCEL_BLOB_AVAILABLE = True
-except ImportError:
-    VERCEL_BLOB_AVAILABLE = False
+# Using REST API directly since vercel-blob package may have import issues
+VERCEL_BLOB_AVAILABLE = True  # We'll use REST API directly
 
 manager = None
 
@@ -224,33 +221,73 @@ async def run_agent_script(
 
 
 async def upload_to_vercel_blob(file_path: str, file_name: str) -> Optional[str]:
-    """Upload video to Vercel Blob storage and return the URL"""
-    if not VERCEL_BLOB_AVAILABLE:
-        print("[BLOB] Vercel Blob SDK not available, skipping upload")
-        return None
-
+    """Upload video to Vercel Blob storage using REST API and return the URL"""
     blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
     if not blob_token:
         print("[BLOB] BLOB_READ_WRITE_TOKEN not set, skipping upload")
         return None
 
     try:
+        import httpx
+        
         print(f"[BLOB] Uploading {file_name} to Vercel Blob...")
+        file_size = os.path.getsize(file_path)
+        print(f"[BLOB] File size: {file_size / (1024*1024):.2f} MB")
+        
+        # Read file data
         with open(file_path, "rb") as f:
             file_data = f.read()
 
-        # Upload to Vercel Blob
-        blob = put(
-            pathname=file_name,
-            body=file_data,
-            options={
-                "access": "public",
-                "token": blob_token,
+        # Upload to Vercel Blob using REST API
+        # API endpoint: https://blob.vercel-storage.com/put
+        async with httpx.AsyncClient(timeout=300.0) as client:  # 5 min timeout for large files
+            # Vercel Blob API expects multipart/form-data with specific fields
+            files = {
+                "file": (file_name, file_data, "video/mp4")
             }
-        )
-
-        print(f"[BLOB] Upload successful: {blob['url']}")
-        return blob["url"]
+            data = {
+                "pathname": file_name,
+                "access": "public",
+            }
+            
+            response = await client.post(
+                "https://blob.vercel-storage.com/put",
+                headers={
+                    "Authorization": f"Bearer {blob_token}",
+                },
+                files=files,
+                data=data
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                blob_url = result.get("url")
+                print(f"[BLOB] Upload successful: {blob_url}")
+                return blob_url
+            else:
+                print(f"[BLOB] Upload failed with status {response.status_code}: {response.text}")
+                return None
+                
+    except ImportError:
+        print("[BLOB] httpx not available, trying vercel_blob package...")
+        # Fallback to vercel_blob package if available
+        try:
+            from vercel_blob import put
+            with open(file_path, "rb") as f:
+                file_data = f.read()
+            blob = put(
+                pathname=file_name,
+                body=file_data,
+                options={
+                    "access": "public",
+                    "token": blob_token,
+                }
+            )
+            print(f"[BLOB] Upload successful (package): {blob['url']}")
+            return blob["url"]
+        except ImportError:
+            print("[BLOB] Neither httpx nor vercel_blob available, skipping upload")
+            return None
     except Exception as e:
         print(f"[BLOB] Upload failed: {e}")
         import traceback
