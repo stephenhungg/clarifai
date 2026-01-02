@@ -34,7 +34,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 class GenerateVideoRequest(BaseModel):
     concept_id: str = ""
-    model: str = "fast"  # "fast" for gemini-2.5-flash, "quality" for gemini-3-flash
+    model: str = "fast"  # "fast" for gemini-2.5-flash, "quality" for gemini-1.5-pro
 
 
 async def run_agent_script(
@@ -112,7 +112,8 @@ async def run_agent_script(
         }
 
     # Map model selection to actual model name
-    model_name = "gemini-3-pro" if model == "quality" else "gemini-3-flash"
+    # Using gemini-2.5-flash for fast (free tier) and gemini-1.5-pro for quality
+    model_name = "gemini-1.5-pro-preview" if model == "quality" else "gemini-3-flash-preview"
     
     cmd = [
         str(python_executable),
