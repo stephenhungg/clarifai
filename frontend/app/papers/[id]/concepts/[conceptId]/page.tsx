@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Download, Play, Code2, FileText, Terminal } from 'lucide-react';
 import { Navigation } from '../../../../components/navigation';
+import { Footer } from '../../../../components/footer';
 import { StatusBadge } from '../../../../components/status-badge';
 import * as Tabs from '@radix-ui/react-tabs';
 import {
@@ -185,7 +186,7 @@ export default function ConceptDetailPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+    <div className="relative min-h-screen flex flex-col overflow-hidden bg-bg-primary text-text-primary">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-32 left-0 h-[26rem] w-[26rem] rounded-full bg-white/10 blur-[140px] opacity-45 animate-float" />
         <div
@@ -195,7 +196,7 @@ export default function ConceptDetailPage() {
       </div>
       <Navigation />
 
-      <main className="relative z-10 pt-28 pb-20 px-6">
+      <main className="relative z-10 flex-1 pt-28 pb-20 px-6">
         <div className="mx-auto max-w-6xl">
           {/* Header */}
           <motion.div
@@ -421,6 +422,7 @@ export default function ConceptDetailPage() {
           )}
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

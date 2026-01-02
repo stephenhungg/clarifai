@@ -5,8 +5,11 @@ Extracts text, metadata, and structure from research papers
 
 import pdfplumber
 import re
+import os
+import asyncio
 from typing import Dict, List, Tuple
 from pathlib import Path
+from ..services.blob_storage import download_from_blob, is_blob_url
 
 
 class PDFParser:
@@ -16,10 +19,30 @@ class PDFParser:
     async def parse_pdf(self, file_path: str) -> Dict[str, any]:
         """
         Parse PDF file and extract content, metadata, and structure
+        Supports both local file paths and Vercel Blob URLs
         """
+        temp_file_path = None
         try:
+            # If it's a blob URL, download it first
+            if is_blob_url(file_path):
+                temp_file_path = await download_from_blob(file_path)
+                if not temp_file_path:
+                    return {
+                        "title": "",
+                        "authors": [],
+                        "abstract": "",
+                        "content": "",
+                        "page_count": 0,
+                        "metadata": {},
+                        "success": False,
+                        "error": "Failed to download PDF from blob storage",
+                    }
+                actual_file_path = temp_file_path
+            else:
+                actual_file_path = file_path
+            
             # Open PDF document
-            with pdfplumber.open(file_path) as pdf:
+            with pdfplumber.open(actual_file_path) as pdf:
                 # Extract metadata
                 metadata = pdf.metadata or {}
 
@@ -38,7 +61,7 @@ class PDFParser:
             # Clean the full text
             cleaned_text = self._clean_text(full_text)
 
-            return {
+            result = {
                 "title": title,
                 "authors": authors,
                 "abstract": abstract,
@@ -47,9 +70,25 @@ class PDFParser:
                 "metadata": metadata,
                 "success": True,
             }
+            
+            # Clean up temporary file if we downloaded from blob
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    print(f"[PDF_PARSER] Cleaned up temporary file: {temp_file_path}")
+                except Exception as e:
+                    print(f"[PDF_PARSER] Warning: Failed to delete temp file: {e}")
+            
+            return result
 
         except Exception as e:
             print(f"✗ Error parsing PDF: {e}")
+            # Clean up temporary file on error
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except:
+                    pass
             return {
                 "title": "",
                 "authors": [],
@@ -214,21 +253,52 @@ class PDFParser:
 
         return cleaned_text
 
-    def validate_pdf(self, file_path: str) -> Tuple[bool, str]:
+    async def validate_pdf(self, file_path: str) -> Tuple[bool, str]:
         """
         Validate that the file is a readable PDF
+        Supports both local file paths and Vercel Blob URLs
         """
+        temp_file_path = None
         try:
-            if not Path(file_path).exists():
-                return False, "File does not exist"
+            # If it's a blob URL, download it first
+            if is_blob_url(file_path):
+                temp_file_path = await download_from_blob(file_path)
+                if not temp_file_path:
+                    return False, "Failed to download PDF from blob storage"
+                actual_file_path = temp_file_path
+            else:
+                if not Path(file_path).exists():
+                    return False, "File does not exist"
+                actual_file_path = file_path
 
-            with pdfplumber.open(file_path) as pdf:
+            with pdfplumber.open(actual_file_path) as pdf:
                 page_count = len(pdf.pages)
 
             if page_count == 0:
+                # Clean up temp file
+                if temp_file_path and os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except:
+                        pass
                 return False, "PDF has no pages"
 
-            return True, f"Valid PDF with {page_count} pages"
+            result = True, f"Valid PDF with {page_count} pages"
+            
+            # Clean up temporary file if we downloaded from blob
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except:
+                    pass
+            
+            return result
 
         except Exception as e:
+            # Clean up temp file on error
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except:
+                    pass
             return False, f"Invalid PDF: {str(e)}"

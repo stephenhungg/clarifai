@@ -8,7 +8,7 @@ import json
 from typing import Dict, Any, Optional
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -18,6 +18,7 @@ from ...models.paper import Paper, PaperResponse, AnalysisStatus, Concept
 from ...services.pdf_parser import PDFParser
 from ...services.gemini_service import GeminiService
 from ...services.storage import PaperStorage
+from ...services.blob_storage import upload_to_blob, download_from_blob, is_blob_url
 
 router = APIRouter()
 
@@ -69,12 +70,32 @@ async def upload_pdf(
         # Generate unique filename
         paper_id = str(uuid.uuid4())
         filename = f"{paper_id}_{file.filename}"
-        file_path = os.path.join(settings.UPLOAD_DIR, filename)
-
-        # Save file
+        
+        # Read file content
         content = await file.read()
-        with open(file_path, "wb") as f:
+        
+        # Save to temporary file for upload
+        temp_file_path = os.path.join(settings.UPLOAD_DIR, filename)
+        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        with open(temp_file_path, "wb") as f:
             f.write(content)
+        
+        # Upload to Vercel Blob
+        blob_url = await upload_to_blob(temp_file_path, f"pdfs/{filename}")
+        
+        if blob_url:
+            # Delete local temp file after successful upload
+            try:
+                os.remove(temp_file_path)
+                print(f"[UPLOAD] Deleted local temp file after blob upload: {temp_file_path}")
+            except Exception as e:
+                print(f"[UPLOAD] Warning: Failed to delete temp file: {e}")
+            # Use blob URL as file_path
+            file_path = blob_url
+        else:
+            # Fallback to local storage if blob upload fails
+            file_path = temp_file_path
+            print(f"[UPLOAD] Blob upload failed, using local storage: {file_path}")
 
         # Create paper record with user_id
         print(f"[UPLOAD] Creating paper {paper_id} with user_id: {user_id}")
@@ -315,6 +336,7 @@ async def serve_pdf(
 ):
     """
     Serve PDF file for embedded viewing
+    Supports both local files and Vercel Blob URLs
     """
     paper = PaperStorage.get_paper(paper_id, user_id)
     if not paper:
@@ -322,6 +344,31 @@ async def serve_pdf(
     
     verify_paper_access(paper, user_id)
     
+    # If it's a blob URL, stream it directly
+    if is_blob_url(paper.file_path):
+        import httpx
+        try:
+            async def generate():
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    async with client.stream("GET", paper.file_path) as response:
+                        if response.status_code == 200:
+                            async for chunk in response.aiter_bytes():
+                                yield chunk
+                        else:
+                            raise HTTPException(status_code=404, detail="PDF file not found in blob storage")
+            
+            return StreamingResponse(
+                generate(),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f"inline; filename={paper.filename}",
+                    "Cache-Control": "public, max-age=3600",
+                },
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error streaming PDF from blob: {str(e)}")
+    
+    # Local file fallback
     if not os.path.exists(paper.file_path):
         raise HTTPException(status_code=404, detail="PDF file not found")
 
@@ -351,8 +398,8 @@ async def delete_paper(
     verify_paper_access(paper, user_id)
 
     try:
-        # Delete file
-        if os.path.exists(paper.file_path):
+        # Delete file (only if local, blob files are handled by Vercel)
+        if not is_blob_url(paper.file_path) and os.path.exists(paper.file_path):
             os.remove(paper.file_path)
 
         # Delete video files if they exist

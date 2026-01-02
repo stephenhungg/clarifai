@@ -51,14 +51,23 @@ def initialize_llm(api_key):
     return client
 
 
+# Global model variable to use across all Gemini calls
+_gemini_model = "gemini-2.5-flash"
+
+def set_gemini_model(model: str):
+    """Set the Gemini model to use for all API calls"""
+    global _gemini_model
+    _gemini_model = model
+
 def call_gemini_with_retries(client, contents, temperature, context_label):
     """Calls Gemini with retries for quota/rate limit errors."""
+    global _gemini_model
     max_retries = 5
     base_delay = 2
     for attempt in range(1, max_retries + 1):
         try:
             return client.models.generate_content(
-                model="gemini-3-pro-preview",
+                model=_gemini_model,
                 contents=contents,
                 config=types.GenerateContentConfig(
                     temperature=temperature,
@@ -661,18 +670,21 @@ async def merge_video_with_audio(video_path, audio_path, output_dir):
                 narrated_path
             ]
         elif video_duration < audio_duration:
-            # Video is shorter than audio - loop video to match audio duration
-            log(f"Video ({video_duration:.2f}s) is shorter than audio ({audio_duration:.2f}s). Looping video to match.")
+            # Video is shorter than audio - freeze last frame to match audio duration
+            remaining_duration = audio_duration - video_duration
+            log(f"Video ({video_duration:.2f}s) is shorter than audio ({audio_duration:.2f}s). Freezing last frame for {remaining_duration:.2f}s.")
+            # Use tpad filter to extend video by cloning the last frame
             cmd = [
                 "ffmpeg",
                 "-y",
-                "-stream_loop", "-1",  # Loop video indefinitely
                 "-i", video_path,
                 "-i", audio_path,
-                "-c:v", "libx264",  # Need to re-encode to loop
+                "-vf", f"tpad=stop_mode=clone:stop_duration={remaining_duration:.3f}",
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "23",
                 "-c:a", "aac",
-                "-t", str(audio_duration),  # Set output duration to audio length
-                "-shortest",  # Safety: stop at shortest (should be audio)
+                "-shortest",  # Stop at audio duration
                 narrated_path
             ]
         else:
@@ -815,22 +827,29 @@ async def process_clips_in_batches(scenes, client, output_dir, captions, batch_s
 
 async def async_main():
     try:
-        if len(sys.argv) != 5:
-            log("--- FATAL ERROR: Agent requires 4 arguments. ---")
+        if len(sys.argv) < 5:
+            log("--- FATAL ERROR: Agent requires at least 4 arguments. ---")
             print(
                 "FINAL_RESULT: "
                 + json.dumps({"success": False, "error": "Invalid arguments"})
             )
             return
-
+        
         concept_name, concept_description, output_dir, api_key = (
             sys.argv[1],
             sys.argv[2],
             sys.argv[3],
             sys.argv[4],
         )
+        
+        # Model is optional 5th argument, default to gemini-2.5-flash
+        model = sys.argv[5] if len(sys.argv) > 5 else "gemini-2.5-flash"
 
         client = initialize_llm(api_key)
+        set_gemini_model(model)
+        log(f"--- Using model: {model} ---")
+        set_gemini_model(model)
+        log(f"--- Using model: {model} ---")
 
         log("=== Step 1: Splitting concept into scenes ===")
         send_progress(0, 1, "splitting", "Analyzing concept structure")

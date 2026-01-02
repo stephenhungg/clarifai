@@ -13,6 +13,7 @@ from ...models.paper import Concept, VideoStatus, ConceptVideo
 from ...core.config import settings
 from ...core.auth import verify_api_key, get_current_user_id
 from ...services.storage import PaperStorage
+from ...services.blob_storage import upload_to_blob
 
 # Per-user video generation limits
 DAILY_VIDEO_LIMIT = 5  # Free tier: 5 videos per day per user
@@ -22,14 +23,6 @@ MAX_CONCURRENT_GENERATIONS = 3  # Max 3 videos generating at once per user
 # Set to 2 to prevent Railway memory issues - Manim is very memory-intensive
 GLOBAL_VIDEO_SEMAPHORE = asyncio.Semaphore(2)
 
-# Vercel Blob storage (optional, falls back to local storage)
-try:
-    from vercel_blob import put as vercel_put
-    VERCEL_BLOB_AVAILABLE = True
-    print("[BLOB] vercel_blob package imported successfully")
-except ImportError as e:
-    VERCEL_BLOB_AVAILABLE = False
-    print(f"[BLOB] vercel_blob package not available: {e}")
 
 manager = None
 
@@ -41,10 +34,11 @@ limiter = Limiter(key_func=get_remote_address)
 
 class GenerateVideoRequest(BaseModel):
     concept_id: str = ""
+    model: str = "fast"  # "fast" for gemini-2.5-flash, "quality" for gemini-3-pro-preview
 
 
 async def run_agent_script(
-    paper_id: str, concept_name: str, concept_description: str, output_dir: str
+    paper_id: str, concept_name: str, concept_description: str, output_dir: str, model: str = "fast"
 ) -> Dict[str, Any]:
     # Calculate paths relative to this file
     # video.py is at: backend/app/api/endpoints/video.py
@@ -117,6 +111,9 @@ async def run_agent_script(
             "clip_paths": [],
         }
 
+    # Map model selection to actual model name
+    model_name = "gemini-3-pro-preview" if model == "quality" else "gemini-2.5-flash"
+    
     cmd = [
         str(python_executable),
         str(agent_script_path),
@@ -124,6 +121,7 @@ async def run_agent_script(
         concept_description,
         output_dir,
         api_key,
+        model_name,
     ]
 
     print(f"[VIDEO] Running command: {' '.join([str(cmd[0]), str(cmd[1]), str(cmd[2])[:30], str(cmd[3])[:30], str(cmd[4]), '***API_KEY***'])}")
@@ -225,77 +223,7 @@ async def run_agent_script(
     }
 
 
-async def upload_to_vercel_blob(file_path: str, file_name: str) -> Optional[str]:
-    """Upload video to Vercel Blob storage and return the URL"""
-    blob_token = os.getenv("BLOB_READ_WRITE_TOKEN")
-    if not blob_token:
-        print("[BLOB] BLOB_READ_WRITE_TOKEN not set, skipping upload")
-        return None
-
-    try:
-        print(f"[BLOB] Uploading {file_name} to Vercel Blob...")
-        file_size = os.path.getsize(file_path)
-        print(f"[BLOB] File size: {file_size / (1024*1024):.2f} MB")
-        
-        # Read file data
-        with open(file_path, "rb") as f:
-            file_data = f.read()
-
-        # Try using vercel_blob package first (if available)
-        if VERCEL_BLOB_AVAILABLE:
-            try:
-                # Use the package's put function
-                blob = vercel_put(
-                    pathname=file_name,
-                    body=file_data,
-                    options={
-                        "access": "public",
-                        "token": blob_token,
-                    }
-                )
-                blob_url = blob.get("url") if isinstance(blob, dict) else blob.url
-                print(f"[BLOB] Upload successful (package): {blob_url}")
-                return blob_url
-            except Exception as package_err:
-                print(f"[BLOB] Package upload failed: {package_err}, trying REST API...")
-        
-        # Fallback to REST API using httpx
-        import httpx
-        
-        # Vercel Blob REST API: PUT to https://blob.vercel-storage.com/{pathname}
-        async with httpx.AsyncClient(timeout=300.0) as client:  # 5 min timeout for large files
-            response = await client.put(
-                f"https://blob.vercel-storage.com/{file_name}",
-                headers={
-                    "Authorization": f"Bearer {blob_token}",
-                    "Content-Type": "application/octet-stream",
-                },
-                params={
-                    "access": "public",
-                },
-                content=file_data
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                blob_url = result.get("url")
-                print(f"[BLOB] Upload successful (REST API): {blob_url}")
-                return blob_url
-            else:
-                print(f"[BLOB] REST API upload failed with status {response.status_code}: {response.text[:500]}")
-                return None
-                
-    except ImportError:
-        print("[BLOB] httpx not available, cannot upload")
-        return None
-    except Exception as e:
-        print(f"[BLOB] Upload failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-async def generate_video_background(paper_id: str, concept_id: str, concept: Concept):
+async def generate_video_background(paper_id: str, concept_id: str, concept: Concept, model: str = "fast"):
     # Acquire semaphore to limit global concurrent video generations
     async with GLOBAL_VIDEO_SEMAPHORE:
         # Skip ownership check for background tasks
@@ -340,7 +268,7 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
             print(f"[VIDEO] Using clips_dir: {clips_dir}, videos_dir: {videos_dir}")
 
             result = await run_agent_script(
-                paper_id, concept.name, concept.description, str(output_dir)
+                paper_id, concept.name, concept.description, str(output_dir), model
             )
 
             clip_paths = result.get("clip_paths", [])
@@ -371,7 +299,7 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
                 print(f"[VIDEO] File size: {file_size / (1024*1024):.2f} MB" if file_size else "N/A")
 
                 # Try to upload to Vercel Blob first
-                blob_url = await upload_to_vercel_blob(final_video_path, file_name)
+                blob_url = await upload_to_blob(final_video_path, f"videos/{file_name}")
 
                 if blob_url:
                     # Use Vercel Blob URL - delete local file after successful upload
@@ -610,6 +538,9 @@ async def generate_video_for_concept(
             status_code=400, detail="A video is already being generated for this concept."
         )
 
+    # Validate and get model preference
+    model_pref = video_request.model if video_request.model in ["fast", "quality"] else "fast"
+    
     paper.concept_videos[concept_id] = ConceptVideo(
         concept_id=concept_id,
         concept_name=concept.name,
@@ -629,6 +560,7 @@ async def generate_video_for_concept(
         paper_id,
         concept_id,
         concept,
+        model_pref,
     )
 
     return {"message": "Video generation started"}

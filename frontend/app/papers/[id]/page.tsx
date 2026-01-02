@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Plus, Send, X } from 'lucide-react';
+import { ArrowLeft, Plus, Send, X, ChevronDown } from 'lucide-react';
 import { Navigation } from '../../components/navigation';
+import { Footer } from '../../components/footer';
 import { StatusBadge } from '../../components/status-badge';
 import { PDFViewer } from '../../components/pdf-viewer';
 import {
@@ -105,6 +106,7 @@ export default function PaperDetailPage() {
   const [generatingConceptId, setGeneratingConceptId] = useState<string | null>(null);
   const [currentVideo, setCurrentVideo] = useState<VideoModalData | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<VideoModalData | null>(null);
+  const [selectedModel, setSelectedModel] = useState<'fast' | 'quality'>('fast');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const videoPanelRef = useRef<HTMLDivElement>(null);
@@ -316,7 +318,7 @@ export default function PaperDetailPage() {
     captions: concept.video_captions,
   });
 
-  const handleGenerateVideo = async (conceptId: string) => {
+  const handleGenerateVideo = async (conceptId: string, model: 'fast' | 'quality' = 'fast') => {
     if (!paperId) return;
     try {
       setSelectedVideo(null);
@@ -327,7 +329,7 @@ export default function PaperDetailPage() {
       setVideoLogs([]);
       setVideoProgress(null);
       setFakeProgress(0);
-      await generateVideo(paperId, conceptId);
+      await generateVideo(paperId, conceptId, model);
       // Update concept status
       setConcepts((prev) =>
         prev.map((c) =>
@@ -340,7 +342,7 @@ export default function PaperDetailPage() {
     }
   };
 
-  const handleConceptVideoAction = (concept: Concept) => {
+  const handleConceptVideoAction = (concept: Concept, model?: 'fast' | 'quality') => {
     if (!paperId) return;
 
     if (concept.video_status === 'ready' && concept.video_url) {
@@ -350,7 +352,7 @@ export default function PaperDetailPage() {
       return;
     }
 
-    handleGenerateVideo(concept.id);
+    handleGenerateVideo(concept.id, model || selectedModel);
   };
 
   // Track previous concept states to detect when video becomes ready
@@ -605,7 +607,7 @@ export default function PaperDetailPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+    <div className="relative min-h-screen flex flex-col overflow-hidden bg-bg-primary text-text-primary">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-32 left-0 h-[28rem] w-[28rem] rounded-full bg-white/10 blur-[150px] opacity-45 animate-float" />
         <div
@@ -615,7 +617,7 @@ export default function PaperDetailPage() {
       </div>
       <Navigation />
 
-      <main className="relative z-10 pt-28 pb-20 px-6">
+      <main className="relative z-10 flex-1 pt-28 pb-20 px-6">
         <div className="mx-auto max-w-7xl">
           {/* Header */}
           <motion.div
@@ -733,24 +735,48 @@ export default function PaperDetailPage() {
                         {concept.description}
                       </p>
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
+                      {concept.video_status === 'ready' ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             handleConceptVideoAction(concept);
-                        }}
-                        disabled={concept.video_status === 'generating'}
-                          className={`w-full text-xs py-1.5 px-2 rounded-md transition-colors ${
-                          concept.video_status === 'ready'
-                            ? 'bg-accent-success/10 text-accent-success border border-accent-success/30'
-                              : 'bg-white/5 text-text-secondary border border-white/15 hover:border-white/30'
-                        }`}
-                      >
-                        {concept.video_status === 'ready'
-                            ? '✓ Watch Video'
-                          : concept.video_status === 'generating'
-                          ? 'Generating...'
-                          : 'Generate Video'}
-                      </button>
+                          }}
+                          className="w-full text-xs py-1.5 px-2 rounded-md transition-colors bg-accent-success/10 text-accent-success border border-accent-success/30"
+                        >
+                          ✓ Watch Video
+                        </button>
+                      ) : concept.video_status === 'generating' ? (
+                        <button
+                          disabled
+                          className="w-full text-xs py-1.5 px-2 rounded-md bg-white/5 text-text-secondary border border-white/15"
+                        >
+                          Generating...
+                        </button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <div className="flex-1 relative">
+                            <select
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setSelectedModel(e.target.value as 'fast' | 'quality')}
+                              value={selectedModel}
+                              className="w-full text-xs py-1.5 px-2 pr-6 rounded-md bg-white/5 text-text-secondary border border-white/15 hover:border-white/30 appearance-none cursor-pointer"
+                            >
+                              <option value="fast">Fast</option>
+                              <option value="quality">Quality</option>
+                            </select>
+                            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-text-tertiary pointer-events-none" />
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleConceptVideoAction(concept);
+                            }}
+                            className="flex-1 text-xs py-1.5 px-2 rounded-md transition-colors bg-white/5 text-text-secondary border border-white/15 hover:border-white/30"
+                          >
+                            Generate Video
+                          </button>
+                        </div>
+                      )}
                     </motion.div>
                   ))}
                 </div>
@@ -1034,6 +1060,7 @@ export default function PaperDetailPage() {
           </div>
         </div>
       ) : null}
+      <Footer />
     </div>
   );
 }

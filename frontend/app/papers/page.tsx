@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Clock, Search, Trash2 } from 'lucide-react';
 import { Navigation } from '../components/navigation';
+import { Footer } from '../components/footer';
 import { StatusBadge } from '../components/status-badge';
 import { deletePaper, listPapers } from '../lib/api';
 import { useAuth } from '../providers/auth-provider';
@@ -119,7 +120,7 @@ export default function PapersPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+    <div className="relative min-h-screen flex flex-col overflow-hidden bg-bg-primary text-text-primary">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-40 left-0 h-[28rem] w-[28rem] rounded-full bg-white/10 blur-[140px] opacity-45 animate-float" />
         <div
@@ -130,7 +131,7 @@ export default function PapersPage() {
 
       <Navigation />
 
-      <main className="relative z-10 pt-32 pb-20 px-6">
+      <main className="relative z-10 flex-1 pt-32 pb-20 px-6">
         <div className="mx-auto max-w-6xl space-y-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -323,6 +324,7 @@ export default function PapersPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      <Footer />
     </div>
   );
 }

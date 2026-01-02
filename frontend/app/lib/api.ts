@@ -228,12 +228,20 @@ export async function generateAdditionalConcept(paperId: string): Promise<Concep
 }
 
 // Video API
-export async function generateVideo(paperId: string, conceptId: string): Promise<void> {
+export async function generateVideo(
+  paperId: string, 
+  conceptId: string, 
+  model: 'fast' | 'quality' = 'fast'
+): Promise<void> {
   const response = await fetch(
     `${API_URL}/api/papers/${paperId}/concepts/${conceptId}/generate-video`,
     {
       method: 'POST',
       headers: await getHeaders(),
+      body: JSON.stringify({
+        concept_id: conceptId,
+        model: model,
+      }),
     }
   );
 

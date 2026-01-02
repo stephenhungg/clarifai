@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Upload } from 'lucide-react';
 import { Navigation } from './components/navigation';
+import { Footer } from './components/footer';
 import { ShaderCanvas } from './components/shader-canvas';
 import { uploadPaper } from './lib/api';
 import { useAuth } from './providers/auth-provider';
@@ -91,7 +92,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-text-primary">
+    <div className="relative min-h-screen flex flex-col overflow-hidden text-text-primary">
       {/* Fallback background in case WebGL fails */}
       <div className="fixed inset-0 bg-bg-primary -z-10" />
 
@@ -111,7 +112,7 @@ export default function Home() {
 
       <Navigation />
 
-      <main className="relative z-10 pt-32 pb-20 px-6">
+      <main className="relative z-10 flex-1 pt-32 pb-20 px-6">
         <div className="mx-auto max-w-4xl space-y-16">
           <motion.div
             initial={{ opacity: 0, y: 40 }}
@@ -230,6 +231,7 @@ export default function Home() {
           </motion.div>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }
