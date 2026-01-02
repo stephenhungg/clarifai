@@ -32,6 +32,10 @@ export default function PapersPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    document.title = 'clarifai | library';
+  }, []);
+
+  useEffect(() => {
     const loadPapers = async () => {
       try {
         setIsLoading(true);

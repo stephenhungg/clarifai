@@ -120,6 +120,15 @@ export default function PaperDetailPage() {
   }, [paperId]);
 
   useEffect(() => {
+    if (paper) {
+      const paperTitle = paper.title || paper.filename || 'paper';
+      document.title = `clarifai | ${paperTitle}`;
+    } else {
+      document.title = 'clarifai';
+    }
+  }, [paper]);
+
+  useEffect(() => {
     if (paper?.status === 'analyzed') {
       loadConcepts();
     } else if (paper?.status === 'analyzing') {
@@ -311,12 +320,56 @@ export default function PaperDetailPage() {
   const resolveVideoUrl = (path: string) =>
     path.startsWith('http') ? path : `${API_BASE}${path}`;
 
+  const sanitizeFilename = (name: string): string => {
+    // Remove special characters, replace spaces with underscores, limit length
+    return name
+      .replace(/[^a-z0-9\s-]/gi, '')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .substring(0, 50)
+      .toLowerCase();
+  };
+
   const createVideoData = (concept: Concept): VideoModalData => ({
     id: concept.id,
     url: resolveVideoUrl(concept.video_url || ''),
     name: concept.name,
     captions: concept.video_captions,
   });
+
+  const handleDownloadVideo = async (videoUrl: string, conceptName: string) => {
+    try {
+      const paperTitle = paper?.title || paper?.filename || 'paper';
+      const sanitizedPaperTitle = sanitizeFilename(paperTitle);
+      const sanitizedConceptName = sanitizeFilename(conceptName);
+      const filename = `${sanitizedPaperTitle}_${sanitizedConceptName}.mp4`;
+
+      // Fetch the video as a blob
+      const response = await fetch(videoUrl);
+      if (!response.ok) throw new Error('Failed to fetch video');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // Create a temporary link and trigger download
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+      // Fallback to simple download
+      const link = document.createElement('a');
+      link.href = videoUrl;
+      link.download = `${sanitizeFilename(conceptName)}.mp4`;
+      link.click();
+    }
+  };
 
   const handleGenerateVideo = async (conceptId: string, model: 'fast' | 'quality' = 'fast') => {
     if (!paperId) return;
@@ -1048,13 +1101,12 @@ export default function PaperDetailPage() {
                 <p className="text-xs text-text-tertiary">
                   Captions are generated directly from the agent’s scene descriptions.
                 </p>
-                <a
-                  href={selectedVideo.url}
-                  download
+                <button
+                  onClick={() => handleDownloadVideo(selectedVideo.url, selectedVideo.name)}
                   className="text-sm text-text-secondary hover:text-text-primary underline-offset-4 hover:underline"
                 >
                   Download video
-                </a>
+                </button>
               </div>
             </div>
           </div>

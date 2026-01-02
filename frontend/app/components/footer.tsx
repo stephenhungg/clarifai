@@ -73,7 +73,33 @@ export function Footer() {
         <div className="mt-8 border-t border-white/5 pt-6 md:mt-12">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <p className="text-xs text-text-tertiary">
-              Built by Stephen Hung, Joshua Lin, and Philip Chen
+              Built by{' '}
+              <a
+                href="https://github.com/stephenhungg"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-text-secondary hover:text-white transition-colors underline-offset-4 hover:underline"
+              >
+                Stephen Hung
+              </a>
+              {', '}
+              <a
+                href="https://github.com/qtzx06"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-text-secondary hover:text-white transition-colors underline-offset-4 hover:underline"
+              >
+                Joshua Lin
+              </a>
+              {', and '}
+              <a
+                href="https://github.com/philip-chen6"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-text-secondary hover:text-white transition-colors underline-offset-4 hover:underline"
+              >
+                Philip Chen
+              </a>
             </p>
             <div className="flex items-center gap-6">
               <span className="text-xs text-text-tertiary">

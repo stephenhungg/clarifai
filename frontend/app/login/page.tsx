@@ -4,7 +4,6 @@ import { useAuth } from '../providers/auth-provider'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Navigation } from '../components/navigation'
-import { ShaderCanvas } from '../components/shader-canvas'
 import { isSupabaseConfigured } from '../lib/supabase'
 
 export default function LoginPage() {
@@ -34,27 +33,23 @@ export default function LoginPage() {
 
   const supabaseConfigured = isSupabaseConfigured()
 
-  if (loading || user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
-        <div className="text-text-primary">Loading...</div>
-      </div>
-    )
-  }
-
   return (
     <div className="relative min-h-screen overflow-hidden text-text-primary">
       <div className="fixed inset-0 bg-bg-primary -z-10" />
-      <div className="fixed inset-0" style={{ zIndex: 0 }}>
-        <ShaderCanvas className="w-full h-full pointer-events-none" introDuration={1.0} />
-      </div>
-      <div className="fixed inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/60 pointer-events-none" style={{ zIndex: 1 }} />
 
       <Navigation />
 
       <main className="relative z-10 min-h-screen flex items-center justify-center px-6 py-20">
-        <div className="w-full max-w-md">
-          <div className="rounded-3xl border border-white/20 bg-black/40 backdrop-blur-3xl shadow-2xl p-12">
+        {(loading || user) ? (
+          <div className="w-full max-w-md">
+            <div className="rounded-3xl border border-white/20 bg-black/40 backdrop-blur-3xl shadow-2xl p-12 text-center">
+              <div className="w-12 h-12 border-4 border-white/15 border-t-white rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-text-primary">Loading...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full max-w-md">
+            <div className="rounded-3xl border border-white/20 bg-black/40 backdrop-blur-3xl shadow-2xl p-12">
             <div className="text-center mb-10">
               <h1 className="text-[clamp(2rem,4vw,2.5rem)] font-light leading-tight tracking-[-0.04em] mb-4">
                 Welcome to <span className="text-white">ClarifAI</span>
@@ -155,7 +150,8 @@ export default function LoginPage() {
               </ul>
             </div>
           </div>
-        </div>
+          </div>
+        )}
       </main>
     </div>
   )

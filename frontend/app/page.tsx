@@ -24,6 +24,10 @@ export default function Home() {
     console.log('[LANDING PAGE] Page loaded, user:', user, 'loading:', authLoading);
   }, []);
 
+  useEffect(() => {
+    document.title = 'clarifai | upload';
+  }, []);
+
   // No redirect - landing page is accessible to everyone
   // Removed redirect useEffect - landing page should be accessible without login
 

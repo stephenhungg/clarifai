@@ -688,18 +688,35 @@ async def merge_video_with_audio(video_path, audio_path, output_dir):
                 narrated_path
             ]
         else:
-            # Video is longer or equal - use shortest to match audio
-            log(f"Video ({video_duration:.2f}s) is longer than or equal to audio ({audio_duration:.2f}s). Using audio duration.")
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i", video_path,
-                "-i", audio_path,
-                "-c:v", "copy",
-                "-c:a", "aac",
-                "-t", str(audio_duration),  # Trim to audio duration
-                narrated_path
-            ]
+            # Video is longer or equal - let video play fully, loop audio if needed
+            if video_duration > audio_duration:
+                log(f"Video ({video_duration:.2f}s) is longer than audio ({audio_duration:.2f}s). Video will play fully, audio will loop.")
+                # Loop audio to match video duration
+                cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-i", video_path,
+                    "-stream_loop", "-1",  # Loop audio indefinitely
+                    "-i", audio_path,
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-t", str(video_duration),  # Use video duration
+                    "-shortest",  # Stop at video duration
+                    narrated_path
+                ]
+            else:
+                # Video and audio are equal - simple merge
+                log(f"Video ({video_duration:.2f}s) and audio ({audio_duration:.2f}s) are equal. Merging.")
+                cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-i", video_path,
+                    "-i", audio_path,
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-shortest",
+                    narrated_path
+                ]
 
         log(f"Running ffmpeg: {' '.join(cmd)}")
 

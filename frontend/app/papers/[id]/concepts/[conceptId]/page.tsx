@@ -12,6 +12,7 @@ import {
   getConcepts,
   getVideoStatus,
   getCodeImplementation,
+  getPaper,
   connectToLogs,
   type Concept,
 } from '../../../../lib/api';
@@ -34,6 +35,7 @@ export default function ConceptDetailPage() {
   const conceptId = params.conceptId as string;
 
   const [concept, setConcept] = useState<Concept | null>(null);
+  const [paperTitle, setPaperTitle] = useState<string>('');
   const [activeTab, setActiveTab] = useState('explanation');
   const [code, setCode] = useState<string | null>(null);
   const [isLoadingCode, setIsLoadingCode] = useState(false);
@@ -43,6 +45,14 @@ export default function ConceptDetailPage() {
   useEffect(() => {
     loadConcept();
   }, [paperId, conceptId]);
+
+  useEffect(() => {
+    if (concept) {
+      document.title = `clarifai | ${concept.name}`;
+    } else {
+      document.title = 'clarifai';
+    }
+  }, [concept]);
 
   useEffect(() => {
     if (concept?.video_status === 'generating') {
@@ -66,6 +76,15 @@ export default function ConceptDetailPage() {
 
   const loadConcept = async () => {
     try {
+      // Load paper title for download filename
+      try {
+        const paper = await getPaper(paperId);
+        setPaperTitle(paper.title || paper.filename || 'paper');
+      } catch (err) {
+        console.error('Failed to load paper:', err);
+        setPaperTitle('paper');
+      }
+
       const concepts = await getConcepts(paperId);
       const foundConcept = concepts.find((c) => c.id === conceptId);
 
@@ -150,9 +169,48 @@ export default function ConceptDetailPage() {
     }
   };
 
-  const handleDownloadVideo = () => {
-    if (concept?.video_url) {
-      window.open(concept.video_url, '_blank');
+  const sanitizeFilename = (name: string): string => {
+    // Remove special characters, replace spaces with underscores, limit length
+    return name
+      .replace(/[^a-z0-9\s-]/gi, '')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .substring(0, 50)
+      .toLowerCase();
+  };
+
+  const handleDownloadVideo = async () => {
+    if (!concept?.video_url) return;
+    
+    try {
+      const sanitizedPaperTitle = sanitizeFilename(paperTitle);
+      const sanitizedConceptName = sanitizeFilename(concept.name);
+      const filename = `${sanitizedPaperTitle}_${sanitizedConceptName}.mp4`;
+
+      // Fetch the video as a blob
+      const response = await fetch(concept.video_url);
+      if (!response.ok) throw new Error('Failed to fetch video');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // Create a temporary link and trigger download
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+      // Fallback to simple download
+      const link = document.createElement('a');
+      link.href = concept.video_url;
+      link.download = `${sanitizeFilename(concept.name)}.mp4`;
+      link.click();
     }
   };
 
